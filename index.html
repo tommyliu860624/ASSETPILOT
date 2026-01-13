@@ -41,14 +41,13 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- 預設資料 (Clean Version) ---
+        // --- 預設資料 ---
         const INITIAL_CASH = [];
         const INITIAL_TW_STOCKS = [];
         const INITIAL_US_STOCKS = [];
         const INITIAL_GOALS = [];
         const INITIAL_SOP = [];
         const INITIAL_SOP_DETAILS = [];
-        const DEFAULT_API_KEY = 'd5ij4j1r01qo1lb2cv9gd5ij4j1r01qo1lb2cva0'; 
         const USD_RATE = 31.64;
 
         // --- 歷史資料生成器 (空) ---
@@ -242,12 +241,6 @@
             const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [exchangeRate, setExchangeRate] = useState(() => parseFloat(localStorage.getItem('ap_rate')) || USD_RATE);
-            
-            // KEY FIX: 確保 Key 絕對存在
-            const [finnhubKey, setFinnhubKey] = useState(() => {
-                const savedKey = localStorage.getItem('ap_finnhub_key');
-                return (savedKey && savedKey.trim() !== '') ? savedKey : DEFAULT_API_KEY;
-            });
             const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || generateCorrectedHistory());
             
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -261,7 +254,7 @@
             const [showSettings, setShowSettings] = useState(false); 
             const [isUpdating, setIsUpdating] = useState(false);
             const [lastUpdate, setLastUpdate] = useState(null);
-            const [updateResults, setUpdateResults] = useState(null); // For Report Modal
+            const [updateResults, setUpdateResults] = useState(null);
 
             // Persist Data
             useEffect(() => { localStorage.setItem('ap_cash', JSON.stringify(cash)); }, [cash]);
@@ -272,7 +265,6 @@
             useEffect(() => { localStorage.setItem('ap_sop', JSON.stringify(sopList)); }, [sopList]);
             useEffect(() => { localStorage.setItem('ap_sop_details', JSON.stringify(sopDetails)); }, [sopDetails]);
             useEffect(() => { localStorage.setItem('ap_rate', exchangeRate.toString()); }, [exchangeRate]);
-            useEffect(() => { localStorage.setItem('ap_finnhub_key', finnhubKey); }, [finnhubKey]);
             useEffect(() => { localStorage.setItem('ap_history_v3', JSON.stringify(history)); }, [history]);
 
             useEffect(() => { if (window.lucide) window.lucide.createIcons(); });
@@ -314,10 +306,8 @@
                 return Object.values(report).sort((a, b) => b.date.localeCompare(a.date));
             }, [history]);
 
-            // --- API Logic (Fully Rewritten for Debugging) ---
+            // --- Yahoo Finance CORS Proxy Logic ---
             const fetchLiveData = async () => {
-                if (!finnhubKey) { alert('請檢查 API Key'); return; }
-                
                 setIsUpdating(true);
                 const reportLogs = [];
                 const oldRate = exchangeRate;
@@ -325,7 +315,7 @@
                 let newRate = exchangeRate;
 
                 try {
-                    // 1. Fetch Exchange Rate (No Cache)
+                    // 1. Fetch Exchange Rate (Open API)
                     try { 
                         const rateRes = await fetch(`https://open.er-api.com/v6/latest/USD?t=${new Date().getTime()}`); 
                         const rateData = await rateRes.json(); 
@@ -340,21 +330,21 @@
                         reportLogs.push({ label: '匯率更新', value: '失敗 (使用舊值)', diff: 0 });
                     }
 
-                    // 2. Fetch Stocks
-                    const fetchPrice = async (ticker) => { 
+                    // 2. Fetch Yahoo Finance Data via CORS Proxy
+                    const fetchYahooPrice = async (ticker) => { 
                         try { 
-                            // Add timestamp to bypass cache
-                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}&t=${new Date().getTime()}`); 
+                            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d`;
+                            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+                            const res = await fetch(proxyUrl, { cache: "no-store" }); 
                             const data = await res.json(); 
-                            // Validate data
-                            if(data && typeof data.c === 'number' && data.c > 0) return data.c;
-                            return null; 
+                            const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+                            return price || null; 
                         } catch (e) { return null; } 
                     };
                     
                     // Update US Stocks
                     const newUsStocks = await Promise.all(usStocks.map(async (s) => { 
-                        const price = await fetchPrice(s.ticker); 
+                        const price = await fetchYahooPrice(s.ticker); 
                         if (price && price !== s.price) {
                             reportLogs.push({ label: s.ticker, value: `$${s.price} -> $${price}`, diff: price - s.price });
                             return { ...s, price };
@@ -362,9 +352,9 @@
                         return s; 
                     })); 
                     
-                    // Update TW Stocks
+                    // Update TW Stocks (Yahoo uses symbol.TW)
                     const newTwStocks = await Promise.all(twStocks.map(async (s) => { 
-                        const price = await fetchPrice(s.ticker); 
+                        const price = await fetchYahooPrice(s.ticker); 
                         if (price && price !== s.price) {
                             reportLogs.push({ label: s.name, value: `$${s.price} -> $${price}`, diff: price - s.price });
                             return { ...s, price };
@@ -372,13 +362,11 @@
                         return s; 
                     })); 
 
-                    // 3. Batch Update State (Atomic Update)
-                    // We update everything at once to ensure consistency
+                    // 3. Batch Update State
                     setExchangeRate(newRate);
                     setUsStocks(newUsStocks);
                     setTwStocks(newTwStocks);
                     
-                    // Calculate New Net Worth for Report
                     const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
                     const newUsTotal = newUsStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
                     const newTotalNetWorth = totalCashTWD + newTwTotal + ((newUsTotal + usCash) * newRate);
@@ -388,7 +376,7 @@
                     }
 
                     setLastUpdate(new Date().toLocaleTimeString());
-                    setUpdateResults(reportLogs); // Show Modal
+                    setUpdateResults(reportLogs); 
 
                 } catch (error) { 
                     alert('更新過程發生未知錯誤，請檢查網路連線。'); 
@@ -398,8 +386,8 @@
             };
 
             // Backup & Restore
-            const exportData = () => { const data = { cash, twStocks, usStocks, usCash, goals, sopList, sopDetails, history, exchangeRate, finnhubKey }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
-            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.usStocks) setUsStocks(data.usStocks); if(data.usCash !== undefined) setUsCash(data.usCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.exchangeRate) setExchangeRate(data.exchangeRate); if(data.finnhubKey) setFinnhubKey(data.finnhubKey); alert('還原成功！'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
+            const exportData = () => { const data = { cash, twStocks, usStocks, usCash, goals, sopList, sopDetails, history, exchangeRate }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.usStocks) setUsStocks(data.usStocks); if(data.usCash !== undefined) setUsCash(data.usCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.exchangeRate) setExchangeRate(data.exchangeRate); alert('還原成功！'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             // Handlers
             const handleDeleteItem = (id, type) => { if (!confirm('確定刪除？')) return; type==='cash'?setCash(p=>p.filter(i=>i.id!==id)):type==='stockTW'?setTwStocks(p=>p.filter(i=>i.id!==id)):setUsStocks(p=>p.filter(i=>i.id!==id)); setEditItem(null); };
@@ -438,7 +426,15 @@
                         </div>
                     </header>
 
-                    {/* Tab 1: Dashboard */}
+                    {/* Real-time Exchange Rate Display */}
+                    <div className="px-6 pt-2 pb-0 flex justify-center">
+                        <div className="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 flex items-center gap-2">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">USD/TWD</span>
+                            <span className="text-xs font-bold text-emerald-400 font-mono">{exchangeRate.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    {/* Dashboard */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
                             <div className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
@@ -501,7 +497,7 @@
 
                     {/* Modals */}
                     {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} />}
-                    {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">Finnhub API Key</label><input type="text" value={finnhubKey} onChange={(e) => setFinnhubKey(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-xs focus:border-blue-500 outline-none mb-2"/></div><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
+                    {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
                     {showSopModal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}</div></div></div>)}
                     
                     {editItem && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額' : '更新股數'}</h3><button onClick={() => setEditItem(null)} className="text-slate-400"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="text-sm text-blue-400 mb-4 font-mono">{editItem.data.name || editItem.data.ticker}</div>{editItem.type.includes('cash') ? (<Calculator initialValue={editItem.type === 'cashUS' ? editItem.data.balance : editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val)} />) : (<><input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus /><div className="flex gap-3"><button onClick={() => handleDeleteItem(editItem.data.id, editItem.type)} className="py-4 px-6 rounded-xl bg-red-500/10 text-red-500"><i data-lucide="trash-2" className="w-5 h-5"></i></button><button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button></div></>)}</div></div>)}
