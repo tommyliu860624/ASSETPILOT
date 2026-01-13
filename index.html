@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ASSETPIOLT</title>
+    <title>AssetPilot 2026</title>
     
     <!-- PWA Settings for iOS & Android -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
     
-    <!-- App Icon Settings (請確保 icon.png 與此檔案在同一目錄) -->
+    <!-- App Icon Settings -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
@@ -159,7 +159,7 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 ---
+        // --- 元件：資產趨勢線圖 (改良版 Y 軸) ---
         const AssetTrendChart = ({ history, timeRange, mode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -189,6 +189,26 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
+                // 智慧計算 Y 軸格式化
+                const smartFormatter = (val, index, ticks) => {
+                    // 如果數字大於 1 億
+                    if (val >= 100000000) {
+                        return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億';
+                    }
+                    // 如果數字大於 1 萬
+                    if (val >= 10000) {
+                        // 檢查這個 range 是否很小 (最大值 - 最小值)
+                        const maxVal = ticks[ticks.length - 1].value;
+                        const minVal = ticks[0].value;
+                        const range = maxVal - minVal;
+                        
+                        // 如果範圍小於 5 萬，顯示小數點後 1 位以區分，否則顯示整數
+                        const decimals = range < 50000 ? 1 : 0;
+                        return (val / 10000).toFixed(decimals).replace(/\.0$/, '') + '萬';
+                    }
+                    return val;
+                };
+
                 chartInstance.current = new Chart(ctx, {
                     type: 'line',
                     data: {
@@ -208,10 +228,31 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: false } },
+                        plugins: { 
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const val = ctx.parsed.y;
+                                        return ` $${new Intl.NumberFormat('zh-TW').format(val)}`;
+                                    }
+                                }
+                            }
+                        },
                         scales: {
-                            x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } },
-                            y: { grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 9}, callback: (val) => (val/10000).toFixed(0)+'萬' } }
+                            x: { 
+                                grid: { display: false }, 
+                                ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } 
+                            },
+                            y: { 
+                                grid: { color: '#1e293b' }, 
+                                ticks: { 
+                                    color: '#64748b', 
+                                    font: {size: 10}, 
+                                    maxTicksLimit: 6, // 限制刻度數量，避免擁擠
+                                    callback: smartFormatter // 使用智慧格式化
+                                } 
+                            }
                         }
                     }
                 });
