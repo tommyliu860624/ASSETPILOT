@@ -49,7 +49,7 @@
         const INITIAL_SOP = [];
         const INITIAL_SOP_DETAILS = [];
         
-        // 🔑 你的 API Key (已修復)
+        // 🔑 你的 API Key (寫死備份)
         const DEFAULT_API_KEY = 'd5ij4j1r01qo1lb2cv9gd5ij4j1r01qo1lb2cva0'; 
         const USD_RATE = 31.64;
 
@@ -207,6 +207,7 @@
 
         // --- 主程式 ---
         const App = () => {
+            // State: 優先讀取 LocalStorage，若無或 Key 為空則使用預設
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
             const [usStocks, setUsStocks] = useState(() => JSON.parse(localStorage.getItem('ap_us_stocks')) || INITIAL_US_STOCKS);
@@ -218,7 +219,12 @@
             const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [exchangeRate, setExchangeRate] = useState(() => parseFloat(localStorage.getItem('ap_rate')) || USD_RATE);
-            const [finnhubKey, setFinnhubKey] = useState(() => localStorage.getItem('ap_finnhub_key') || DEFAULT_API_KEY);
+            
+            // KEY FIX: 確保 finnhubKey 絕對有值
+            const [finnhubKey, setFinnhubKey] = useState(() => {
+                const savedKey = localStorage.getItem('ap_finnhub_key');
+                return (savedKey && savedKey.trim() !== '') ? savedKey : DEFAULT_API_KEY;
+            });
             const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || generateCorrectedHistory());
             
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -266,6 +272,7 @@
                     us: Math.round(totalUsAssetsTWD),
                     total: Math.round(totalNetWorth)
                 };
+
                 if (!lastRecord || lastRecord.date !== today) {
                     setHistory(prev => [...prev, newRecord]);
                 } else if (Math.abs(lastRecord.total - totalNetWorth) > 100) {
@@ -285,31 +292,68 @@
 
             // API Logic
             const fetchLiveData = async () => {
-                if (!finnhubKey) { alert('請檢查 API Key (設定 -> Finnhub Key)'); return; }
+                if (!finnhubKey) { 
+                    alert('請檢查 API Key (設定 -> Finnhub Key)'); 
+                    return; 
+                }
+                
                 setIsUpdating(true);
-                let msg = '';
+                let updateLog = [];
+                let hasError = false;
+
                 try {
                     // Exchange Rate
                     try { 
-                        const rateRes = await fetch('https://open.er-api.com/v6/latest/USD'); 
+                        const rateRes = await fetch(`https://open.er-api.com/v6/latest/USD`, { cache: "no-store" }); 
                         const rateData = await rateRes.json(); 
                         if (rateData?.rates?.TWD) {
                             setExchangeRate(rateData.rates.TWD);
-                            msg += `匯率: ${rateData.rates.TWD.toFixed(2)} `;
+                            updateLog.push(`匯率: ${rateData.rates.TWD.toFixed(2)}`);
                         }
-                    } catch (e) { console.warn('Rate API Error', e); msg += '匯率失敗 '; }
+                    } catch (e) { 
+                        console.warn('Rate API Error', e); 
+                        updateLog.push('匯率更新失敗');
+                        hasError = true;
+                    }
 
-                    const fetchPrice = async (ticker) => { try { const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}`); const data = await res.json(); return data.c || null; } catch (e) { return null; } };
+                    const fetchPrice = async (ticker) => { 
+                        try { 
+                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}`, { cache: "no-store" }); 
+                            const data = await res.json(); 
+                            if(data.c && data.c > 0) return data.c;
+                            return null; 
+                        } catch (e) { return null; } 
+                    };
                     
                     // Stocks
                     let updatedCount = 0;
-                    const newUsStocks = await Promise.all(usStocks.map(async (s) => { const price = await fetchPrice(s.ticker); if(price) updatedCount++; return price ? { ...s, price } : s; })); setUsStocks(newUsStocks);
-                    const newTwStocks = await Promise.all(twStocks.map(async (s) => { const price = await fetchPrice(s.ticker); if(price) updatedCount++; return price ? { ...s, price } : s; })); setTwStocks(newTwStocks);
+                    
+                    // Update US Stocks
+                    const newUsStocks = await Promise.all(usStocks.map(async (s) => { 
+                        const price = await fetchPrice(s.ticker); 
+                        if(price) updatedCount++; 
+                        return price ? { ...s, price } : s; 
+                    })); 
+                    setUsStocks(newUsStocks);
+                    
+                    // Update TW Stocks
+                    const newTwStocks = await Promise.all(twStocks.map(async (s) => { 
+                        const price = await fetchPrice(s.ticker); 
+                        if(price) updatedCount++; 
+                        return price ? { ...s, price } : s; 
+                    })); 
+                    setTwStocks(newTwStocks);
                     
                     setLastUpdate(new Date().toLocaleTimeString());
-                    alert(`更新完成！\n${msg}\n同步股價: ${updatedCount} 檔`);
+                    
+                    // Feedback Alert
+                    alert(`更新報告:\n${updateLog.join('\n')}\n成功更新股價: ${updatedCount} 檔\n\n(注意: 台股報價可能有 15 分鐘延遲)`);
 
-                } catch (error) { alert('更新過程發生未知錯誤'); } finally { setIsUpdating(false); }
+                } catch (error) { 
+                    alert('更新過程發生未知錯誤，請檢查網路連線。'); 
+                } finally { 
+                    setIsUpdating(false); 
+                }
             };
 
             // Backup & Restore
@@ -414,9 +458,10 @@
                         <TabButton id="analysis" label="分析" icon="pie-chart" />
                     </nav>
 
-                    {/* Modals (Collapsed for brevity but same logic) */}
+                    {/* Modals */}
                     {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">Finnhub API Key</label><input type="text" value={finnhubKey} onChange={(e) => setFinnhubKey(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-xs focus:border-blue-500 outline-none mb-2"/></div><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
                     {showSopModal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}</div></div></div>)}
+                    
                     {editItem && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額' : '更新股數'}</h3><button onClick={() => setEditItem(null)} className="text-slate-400"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="text-sm text-blue-400 mb-4 font-mono">{editItem.data.name || editItem.data.ticker}</div>{editItem.type.includes('cash') ? (<Calculator initialValue={editItem.type === 'cashUS' ? editItem.data.balance : editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val)} />) : (<><input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus /><div className="flex gap-3"><button onClick={() => handleDeleteItem(editItem.data.id, editItem.type)} className="py-4 px-6 rounded-xl bg-red-500/10 text-red-500"><i data-lucide="trash-2" className="w-5 h-5"></i></button><button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button></div></>)}</div></div>)}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => setAddItemType(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '帳戶名稱' : '股票代號 (例: 2330.TW)'}</label><input id="addName" type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '初始金額' : '持有股數'}</label><input id="addVal" type="number" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const name = document.getElementById('addName').value; const val = document.getElementById('addVal').value; if(name && val) handleAddItem(addItemType, name, val);}} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
                     {editGoal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{editGoal.id ? '編輯目標' : '新增目標'}</h3><button onClick={() => setEditGoal(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input id="goalTitle" type="text" defaultValue={editGoal.title} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">目標金額</label><input id="goalTarget" type="number" defaultValue={editGoal.target} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const t = document.getElementById('goalTitle').value; const v = document.getElementById('goalTarget').value; if(t && v) { if(editGoal.id) handleUpdateGoal(editGoal.id, t, v); else { handleAddGoal(t, v); setEditGoal(null); } }}} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg">儲存目標</button></div></div>)}
