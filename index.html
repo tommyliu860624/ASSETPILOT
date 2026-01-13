@@ -33,9 +33,13 @@
         .calc-btn:active { background-color: rgba(71, 85, 105, 0.8); transform: scale(0.95); }
         .calc-btn.op { background-color: #f59e0b; color: white; }
         .calc-btn.eq { background-color: #3b82f6; color: white; }
-        /* Date Input Styling */
+        /* iOS Date Input Fix */
         input[type="date"] {
             color-scheme: dark;
+            appearance: none;
+            -webkit-appearance: none;
+            background-color: transparent;
+            min-height: 2.5rem; /* Ensure touch target */
         }
     </style>
 </head>
@@ -45,7 +49,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- 預設資料 ---
+        // --- 預設資料 (Clean Version) ---
         const INITIAL_CASH = [];
         const INITIAL_TW_STOCKS = [];
         const INITIAL_US_STOCKS = [];
@@ -82,26 +86,21 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 (支援自訂日期) ---
+        // --- 元件：資產趨勢線圖 ---
         const AssetTrendChart = ({ history, timeRange, mode, customDates }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
 
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                
-                // 自訂日期模式
                 if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
                     return history.filter(h => h.date >= customDates.start && h.date <= customDates.end);
                 }
-
-                // 預設模式
                 const now = new Date();
                 let days = 365;
                 if (timeRange === '1W') days = 7;
                 if (timeRange === '1M') days = 30;
                 if (timeRange === 'YTD') days = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24)) + 1;
-                
                 const cutoff = new Date();
                 cutoff.setDate(cutoff.getDate() - days);
                 return history.filter(h => new Date(h.date) >= cutoff);
@@ -119,7 +118,6 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
-                // 智慧格式化
                 const smartFormatter = (val, index, ticks) => {
                     let decimals = 0;
                     if (ticks.length > 1) {
@@ -155,10 +153,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { 
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } }
-                        },
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } } },
                         scales: {
                             x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } },
                             y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } }
@@ -211,11 +206,11 @@
             );
         };
 
-        // --- 元件：更新結果視窗 ---
+        // --- 元件：更新結果視窗 (Bottom Sheet) ---
         const UpdateResultModal = ({ results, onClose }) => {
             return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="activity" className="w-5 h-5 mr-2 text-emerald-400"></i> 更新報告</h3>
                             <button onClick={onClose} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
@@ -238,23 +233,23 @@
             );
         };
 
-        // --- 元件：日期區間選擇器 (New) ---
+        // --- 元件：日期區間選擇器 (Bottom Sheet) ---
         const DateRangeModal = ({ currentDates, onConfirm, onClose }) => {
             return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="calendar" className="w-5 h-5 mr-2 text-blue-400"></i> 自訂區間</h3>
                             <button onClick={onClose} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
                         </div>
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-xs text-slate-400 mb-2">開始日期 (Start)</label>
-                                <input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-sm focus:border-blue-500 outline-none" />
+                                <label className="block text-xs text-slate-400 mb-2">開始日期</label>
+                                <input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" />
                             </div>
                             <div>
-                                <label className="block text-xs text-slate-400 mb-2">結束日期 (End)</label>
-                                <input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-sm focus:border-blue-500 outline-none" />
+                                <label className="block text-xs text-slate-400 mb-2">結束日期</label>
+                                <input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" />
                             </div>
                         </div>
                         <button 
@@ -263,7 +258,7 @@
                                 const e = document.getElementById('endDate').value;
                                 if (s && e) onConfirm(s, e);
                             }} 
-                            className="w-full mt-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm"
+                            className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg"
                         >
                             確認
                         </button>
@@ -293,14 +288,14 @@
             const [activeTab, setActiveTab] = useState('dashboard');
             const [trendMode, setTrendMode] = useState('total'); 
             const [timeRange, setTimeRange] = useState('1W'); // Updated Default: 1 Week
-            const [customDates, setCustomDates] = useState({ start: '', end: '' }); // Custom Date State
+            const [customDates, setCustomDates] = useState({ start: '', end: '' }); 
             const [editItem, setEditItem] = useState(null);
             const [addItemType, setAddItemType] = useState(null);
             const [editGoal, setEditGoal] = useState(null);
             const [sopEditMode, setSopEditMode] = useState(false);
             const [showSopModal, setShowSopModal] = useState(false);
             const [showSettings, setShowSettings] = useState(false); 
-            const [showDateModal, setShowDateModal] = useState(false); // Date Picker Modal
+            const [showDateModal, setShowDateModal] = useState(false);
             const [isUpdating, setIsUpdating] = useState(false);
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
