@@ -41,15 +41,13 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- 預設資料 ---
+        // --- 預設資料 (Clean Version) ---
         const INITIAL_CASH = [];
         const INITIAL_TW_STOCKS = [];
         const INITIAL_US_STOCKS = [];
         const INITIAL_GOALS = [];
         const INITIAL_SOP = [];
         const INITIAL_SOP_DETAILS = [];
-        
-        // 🔑 你的 API Key (寫死備份)
         const DEFAULT_API_KEY = 'd5ij4j1r01qo1lb2cv9gd5ij4j1r01qo1lb2cva0'; 
         const USD_RATE = 31.64;
 
@@ -110,7 +108,6 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
-                // 智慧格式化
                 const smartFormatter = (val, index, ticks) => {
                     let decimals = 0;
                     if (ticks.length > 1) {
@@ -202,12 +199,38 @@
             );
         };
 
+        // --- 元件：更新結果視窗 ---
+        const UpdateResultModal = ({ results, onClose }) => {
+            return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="activity" className="w-5 h-5 mr-2 text-emerald-400"></i> 更新報告</h3>
+                            <button onClick={onClose} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
+                        </div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                            {results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : 
+                                results.map((item, idx) => (
+                                    <div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs">
+                                        <span className="text-slate-300 font-mono">{item.label}</span>
+                                        <span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                                            {item.value}
+                                        </span>
+                                    </div>
+                                ))
+                            }
+                        </div>
+                        <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
+                    </div>
+                </div>
+            );
+        };
+
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
         const formatUSD = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount);
 
         // --- 主程式 ---
         const App = () => {
-            // State: 優先讀取 LocalStorage，若無或 Key 為空則使用預設
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
             const [usStocks, setUsStocks] = useState(() => JSON.parse(localStorage.getItem('ap_us_stocks')) || INITIAL_US_STOCKS);
@@ -220,7 +243,7 @@
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [exchangeRate, setExchangeRate] = useState(() => parseFloat(localStorage.getItem('ap_rate')) || USD_RATE);
             
-            // KEY FIX: 確保 finnhubKey 絕對有值
+            // KEY FIX: 確保 Key 絕對存在
             const [finnhubKey, setFinnhubKey] = useState(() => {
                 const savedKey = localStorage.getItem('ap_finnhub_key');
                 return (savedKey && savedKey.trim() !== '') ? savedKey : DEFAULT_API_KEY;
@@ -238,6 +261,7 @@
             const [showSettings, setShowSettings] = useState(false); 
             const [isUpdating, setIsUpdating] = useState(false);
             const [lastUpdate, setLastUpdate] = useState(null);
+            const [updateResults, setUpdateResults] = useState(null); // For Report Modal
 
             // Persist Data
             useEffect(() => { localStorage.setItem('ap_cash', JSON.stringify(cash)); }, [cash]);
@@ -260,7 +284,7 @@
             const totalUsAssetsTWD = useMemo(() => (totalUsStocksUSD + usCash) * exchangeRate, [totalUsStocksUSD, usCash, exchangeRate]);
             const totalNetWorth = totalCashTWD + totalTwStocksTWD + totalUsAssetsTWD;
 
-            // Auto-record history
+            // Auto-record history (Daily Snapshot)
             useEffect(() => {
                 if (totalNetWorth === 0 && history.length === 0) return;
                 const today = new Date().toISOString().split('T')[0];
@@ -290,64 +314,81 @@
                 return Object.values(report).sort((a, b) => b.date.localeCompare(a.date));
             }, [history]);
 
-            // API Logic
+            // --- API Logic (Fully Rewritten for Debugging) ---
             const fetchLiveData = async () => {
-                if (!finnhubKey) { 
-                    alert('請檢查 API Key (設定 -> Finnhub Key)'); 
-                    return; 
-                }
+                if (!finnhubKey) { alert('請檢查 API Key'); return; }
                 
                 setIsUpdating(true);
-                let updateLog = [];
-                let hasError = false;
+                const reportLogs = [];
+                const oldRate = exchangeRate;
+                const oldNetWorth = totalNetWorth;
+                let newRate = exchangeRate;
 
                 try {
-                    // Exchange Rate
+                    // 1. Fetch Exchange Rate (No Cache)
                     try { 
-                        const rateRes = await fetch(`https://open.er-api.com/v6/latest/USD`, { cache: "no-store" }); 
+                        const rateRes = await fetch(`https://open.er-api.com/v6/latest/USD?t=${new Date().getTime()}`); 
                         const rateData = await rateRes.json(); 
                         if (rateData?.rates?.TWD) {
-                            setExchangeRate(rateData.rates.TWD);
-                            updateLog.push(`匯率: ${rateData.rates.TWD.toFixed(2)}`);
+                            newRate = rateData.rates.TWD;
+                            if (newRate !== oldRate) {
+                                reportLogs.push({ label: 'USD 匯率', value: `${oldRate.toFixed(2)} -> ${newRate.toFixed(2)}`, diff: newRate - oldRate });
+                            }
                         }
                     } catch (e) { 
                         console.warn('Rate API Error', e); 
-                        updateLog.push('匯率更新失敗');
-                        hasError = true;
+                        reportLogs.push({ label: '匯率更新', value: '失敗 (使用舊值)', diff: 0 });
                     }
 
+                    // 2. Fetch Stocks
                     const fetchPrice = async (ticker) => { 
                         try { 
-                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}`, { cache: "no-store" }); 
+                            // Add timestamp to bypass cache
+                            const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}&t=${new Date().getTime()}`); 
                             const data = await res.json(); 
-                            if(data.c && data.c > 0) return data.c;
+                            // Validate data
+                            if(data && typeof data.c === 'number' && data.c > 0) return data.c;
                             return null; 
                         } catch (e) { return null; } 
                     };
                     
-                    // Stocks
-                    let updatedCount = 0;
-                    
                     // Update US Stocks
                     const newUsStocks = await Promise.all(usStocks.map(async (s) => { 
                         const price = await fetchPrice(s.ticker); 
-                        if(price) updatedCount++; 
-                        return price ? { ...s, price } : s; 
+                        if (price && price !== s.price) {
+                            reportLogs.push({ label: s.ticker, value: `$${s.price} -> $${price}`, diff: price - s.price });
+                            return { ...s, price };
+                        }
+                        return s; 
                     })); 
-                    setUsStocks(newUsStocks);
                     
                     // Update TW Stocks
                     const newTwStocks = await Promise.all(twStocks.map(async (s) => { 
                         const price = await fetchPrice(s.ticker); 
-                        if(price) updatedCount++; 
-                        return price ? { ...s, price } : s; 
+                        if (price && price !== s.price) {
+                            reportLogs.push({ label: s.name, value: `$${s.price} -> $${price}`, diff: price - s.price });
+                            return { ...s, price };
+                        }
+                        return s; 
                     })); 
+
+                    // 3. Batch Update State (Atomic Update)
+                    // We update everything at once to ensure consistency
+                    setExchangeRate(newRate);
+                    setUsStocks(newUsStocks);
                     setTwStocks(newTwStocks);
                     
-                    setLastUpdate(new Date().toLocaleTimeString());
+                    // Calculate New Net Worth for Report
+                    const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
+                    const newUsTotal = newUsStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
+                    const newTotalNetWorth = totalCashTWD + newTwTotal + ((newUsTotal + usCash) * newRate);
                     
-                    // Feedback Alert
-                    alert(`更新報告:\n${updateLog.join('\n')}\n成功更新股價: ${updatedCount} 檔\n\n(注意: 台股報價可能有 15 分鐘延遲)`);
+                    if (Math.abs(newTotalNetWorth - oldNetWorth) > 1) {
+                        reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth });
+                    }
+
+                    setLastUpdate(new Date().toLocaleTimeString());
+                    setUpdateResults(reportLogs); // Show Modal
 
                 } catch (error) { 
                     alert('更新過程發生未知錯誤，請檢查網路連線。'); 
@@ -397,7 +438,7 @@
                         </div>
                     </header>
 
-                    {/* Dashboard */}
+                    {/* Tab 1: Dashboard */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
                             <div className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
@@ -433,7 +474,7 @@
                         </div>
                     )}
 
-                    {/* Tab 2: Wallet (金庫 - Assets) */}
+                    {/* Tab 2: Wallet */}
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
@@ -443,7 +484,7 @@
                         </div>
                     )}
 
-                    {/* Tab 3: Analysis (分析 - Goals & Report) */}
+                    {/* Tab 3: Analysis */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} />))}</div></div>
@@ -459,6 +500,7 @@
                     </nav>
 
                     {/* Modals */}
+                    {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} />}
                     {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">Finnhub API Key</label><input type="text" value={finnhubKey} onChange={(e) => setFinnhubKey(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-xs focus:border-blue-500 outline-none mb-2"/></div><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
                     {showSopModal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}</div></div></div>)}
                     
