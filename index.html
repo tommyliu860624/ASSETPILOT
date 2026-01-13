@@ -159,7 +159,7 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 (改良版 Y 軸) ---
+        // --- 元件：資產趨勢線圖 (動態級距修正版) ---
         const AssetTrendChart = ({ history, timeRange, mode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -189,23 +189,33 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
-                // 智慧計算 Y 軸格式化
+                // *** 智慧 Y 軸格式化演算法 ***
                 const smartFormatter = (val, index, ticks) => {
-                    // 如果數字大於 1 億
-                    if (val >= 100000000) {
+                    let decimals = 0;
+                    
+                    // 計算圖表目前的「刻度間距」 (Step Size)
+                    // 如果間距很小，就需要更多小數點來區分
+                    if (ticks.length > 1) {
+                        const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1);
+                        
+                        // 針對 "萬" 單位的判斷
+                        if (stepSize < 10000) decimals = 1; // 間距 < 1萬，顯示 1 位 (102.3)
+                        if (stepSize < 1000) decimals = 2;  // 間距 < 1千，顯示 2 位 (102.35)
+                        if (stepSize < 100) decimals = 3;   // 間距 < 1百，顯示 3 位 (102.352)
+                    }
+
+                    // 億級別
+                    if (Math.abs(val) >= 100000000) {
                         return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億';
                     }
-                    // 如果數字大於 1 萬
-                    if (val >= 10000) {
-                        // 檢查這個 range 是否很小 (最大值 - 最小值)
-                        const maxVal = ticks[ticks.length - 1].value;
-                        const minVal = ticks[0].value;
-                        const range = maxVal - minVal;
-                        
-                        // 如果範圍小於 5 萬，顯示小數點後 1 位以區分，否則顯示整數
-                        const decimals = range < 50000 ? 1 : 0;
-                        return (val / 10000).toFixed(decimals).replace(/\.0$/, '') + '萬';
+                    
+                    // 萬級別
+                    if (Math.abs(val) >= 10000) {
+                        const v = (val / 10000).toFixed(decimals);
+                        // parseFloat 會自動去掉尾端多餘的 0 (例如 "102.30" -> 102.3)
+                        return parseFloat(v) + '萬';
                     }
+                    
                     return val;
                 };
 
@@ -245,12 +255,13 @@
                                 ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } 
                             },
                             y: { 
+                                beginAtZero: false, // 關鍵：允許圖表自動縮放，不強制從 0 開始
                                 grid: { color: '#1e293b' }, 
                                 ticks: { 
                                     color: '#64748b', 
                                     font: {size: 10}, 
-                                    maxTicksLimit: 6, // 限制刻度數量，避免擁擠
-                                    callback: smartFormatter // 使用智慧格式化
+                                    maxTicksLimit: 6, 
+                                    callback: smartFormatter // 套用智慧格式化
                                 } 
                             }
                         }
