@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AssetPilot 2026</title>
     
-    <!-- PWA Settings for iOS & Android -->
+    <!-- PWA Settings -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
-    
-    <!-- App Icon Settings -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
@@ -23,66 +21,18 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        body {
-            background-color: #0f172a;
-            color: #f8fafc;
-            -webkit-tap-highlight-color: transparent;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        .glass-panel {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .safe-area-bottom {
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-        .safe-area-top {
-            padding-top: env(safe-area-inset-top);
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .text-gradient {
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-image: linear-gradient(to right, #60a5fa, #a855f7);
-        }
-        /* Calculator Grid */
-        .calc-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.75rem;
-        }
-        .calc-btn {
-            aspect-ratio: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            font-size: 1.25rem;
-            font-weight: 500;
-            background-color: rgba(51, 65, 85, 0.5);
-            transition: all 0.1s;
-        }
-        .calc-btn:active {
-            background-color: rgba(71, 85, 105, 0.8);
-            transform: scale(0.95);
-        }
-        .calc-btn.op {
-            background-color: #f59e0b;
-            color: white;
-        }
-        .calc-btn.eq {
-            background-color: #3b82f6;
-            color: white;
-        }
+        body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .safe-area-top { padding-top: env(safe-area-inset-top); }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .text-gradient { background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-image: linear-gradient(to right, #60a5fa, #a855f7); }
+        .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+        .calc-btn { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.25rem; font-weight: 500; background-color: rgba(51, 65, 85, 0.5); transition: all 0.1s; }
+        .calc-btn:active { background-color: rgba(71, 85, 105, 0.8); transform: scale(0.95); }
+        .calc-btn.op { background-color: #f59e0b; color: white; }
+        .calc-btn.eq { background-color: #3b82f6; color: white; }
     </style>
 </head>
 <body>
@@ -91,14 +41,16 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- 預設資料 (Clean Version) ---
+        // --- 預設資料 ---
         const INITIAL_CASH = [];
         const INITIAL_TW_STOCKS = [];
         const INITIAL_US_STOCKS = [];
         const INITIAL_GOALS = [];
         const INITIAL_SOP = [];
         const INITIAL_SOP_DETAILS = [];
-        const DEFAULT_API_KEY = ''; 
+        
+        // 🔑 你的 API Key (已修復)
+        const DEFAULT_API_KEY = 'd5ij4j1r01qo1lb2cv9gd5ij4j1r01qo1lb2cva0'; 
         const USD_RATE = 31.64;
 
         // --- 歷史資料生成器 (空) ---
@@ -108,38 +60,13 @@
         const Calculator = ({ initialValue, onConfirm }) => {
             const [display, setDisplay] = useState(String(initialValue));
             const [equation, setEquation] = useState('');
-
-            const handleNum = (num) => {
-                if (display === '0' && num !== '.') setDisplay(num);
-                else setDisplay(display + num);
-            };
-
-            const handleOp = (op) => {
-                setEquation(display + ' ' + op + ' ');
-                setDisplay('0');
-            };
-
-            const handleClear = () => {
-                setDisplay('0');
-                setEquation('');
-            };
-
-            const handleEq = () => {
-                try {
-                    const result = Function('"use strict";return (' + equation + display + ')')();
-                    setDisplay(String(Math.round(result * 100) / 100));
-                    setEquation('');
-                } catch (e) {
-                    setDisplay('Error');
-                }
-            };
-
+            const handleNum = (num) => { if (display === '0' && num !== '.') setDisplay(num); else setDisplay(display + num); };
+            const handleOp = (op) => { setEquation(display + ' ' + op + ' '); setDisplay('0'); };
+            const handleClear = () => { setDisplay('0'); setEquation(''); };
+            const handleEq = () => { try { const result = Function('"use strict";return (' + equation + display + ')')(); setDisplay(String(Math.round(result * 100) / 100)); setEquation(''); } catch (e) { setDisplay('Error'); } };
             return (
                 <div className="w-full">
-                    <div className="bg-slate-900 p-4 rounded-xl mb-4 text-right">
-                        <div className="text-slate-500 text-xs h-4">{equation}</div>
-                        <div className="text-3xl font-mono text-white overflow-x-auto no-scrollbar">{display}</div>
-                    </div>
+                    <div className="bg-slate-900 p-4 rounded-xl mb-4 text-right"><div className="text-slate-500 text-xs h-4">{equation}</div><div className="text-3xl font-mono text-white overflow-x-auto no-scrollbar">{display}</div></div>
                     <div className="calc-grid">
                         {['7','8','9','/'].map(b => <button key={b} onClick={() => isNaN(b) ? handleOp(b) : handleNum(b)} className={`calc-btn ${isNaN(b)?'op':''}`}>{b}</button>)}
                         {['4','5','6','*'].map(b => <button key={b} onClick={() => isNaN(b) ? handleOp(b) : handleNum(b)} className={`calc-btn ${isNaN(b)?'op':''}`}>{b}</button>)}
@@ -149,17 +76,12 @@
                         <button onClick={handleEq} className="calc-btn text-emerald-400">=</button>
                         <button onClick={() => handleOp('+')} className="calc-btn op">+</button>
                     </div>
-                    <button 
-                        onClick={() => onConfirm(display)}
-                        className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg"
-                    >
-                        確認金額
-                    </button>
+                    <button onClick={() => onConfirm(display)} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認金額</button>
                 </div>
             );
         };
 
-        // --- 元件：資產趨勢線圖 (動態級距修正版) ---
+        // --- 元件：資產趨勢線圖 (V10 動態級距) ---
         const AssetTrendChart = ({ history, timeRange, mode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -171,7 +93,6 @@
                 if (timeRange === '1W') days = 7;
                 if (timeRange === '1M') days = 30;
                 if (timeRange === 'YTD') days = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24)) + 1;
-                
                 const cutoff = new Date();
                 cutoff.setDate(cutoff.getDate() - days);
                 return history.filter(h => new Date(h.date) >= cutoff);
@@ -189,33 +110,20 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
-                // *** 智慧 Y 軸格式化演算法 ***
+                // 智慧格式化
                 const smartFormatter = (val, index, ticks) => {
                     let decimals = 0;
-                    
-                    // 計算圖表目前的「刻度間距」 (Step Size)
-                    // 如果間距很小，就需要更多小數點來區分
                     if (ticks.length > 1) {
                         const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1);
-                        
-                        // 針對 "萬" 單位的判斷
-                        if (stepSize < 10000) decimals = 1; // 間距 < 1萬，顯示 1 位 (102.3)
-                        if (stepSize < 1000) decimals = 2;  // 間距 < 1千，顯示 2 位 (102.35)
-                        if (stepSize < 100) decimals = 3;   // 間距 < 1百，顯示 3 位 (102.352)
+                        if (stepSize < 10000) decimals = 1;
+                        if (stepSize < 1000) decimals = 2;
+                        if (stepSize < 100) decimals = 3;
                     }
-
-                    // 億級別
-                    if (Math.abs(val) >= 100000000) {
-                        return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億';
-                    }
-                    
-                    // 萬級別
+                    if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億';
                     if (Math.abs(val) >= 10000) {
                         const v = (val / 10000).toFixed(decimals);
-                        // parseFloat 會自動去掉尾端多餘的 0 (例如 "102.30" -> 102.3)
                         return parseFloat(v) + '萬';
                     }
-                    
                     return val;
                 };
 
@@ -240,30 +148,11 @@
                         interaction: { intersect: false, mode: 'index' },
                         plugins: { 
                             legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => {
-                                        const val = ctx.parsed.y;
-                                        return ` $${new Intl.NumberFormat('zh-TW').format(val)}`;
-                                    }
-                                }
-                            }
+                            tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } }
                         },
                         scales: {
-                            x: { 
-                                grid: { display: false }, 
-                                ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } 
-                            },
-                            y: { 
-                                beginAtZero: false, // 關鍵：允許圖表自動縮放，不強制從 0 開始
-                                grid: { color: '#1e293b' }, 
-                                ticks: { 
-                                    color: '#64748b', 
-                                    font: {size: 10}, 
-                                    maxTicksLimit: 6, 
-                                    callback: smartFormatter // 套用智慧格式化
-                                } 
-                            }
+                            x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } },
+                            y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } }
                         }
                     }
                 });
@@ -276,7 +165,6 @@
         // --- 元件：堆疊資產條 ---
         const AllocationBar = ({ cash, tw, us, total }) => {
             if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
-            
             const pCash = (cash / total) * 100;
             const pTw = (tw / total) * 100;
             const pUs = (us / total) * 100;
@@ -290,15 +178,9 @@
                         <div style={{ width: `${pUs}%` }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('us')}></div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'cash' ? null : 'cash')}>
-                            <div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{formatMoney(cash)}</div>}
-                        </div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'tw' ? null : 'tw')}>
-                            <div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{formatMoney(tw)}</div>}
-                        </div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'us' ? null : 'us')}>
-                            <div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">美股</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{formatMoney(us)}</div>}
-                        </div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'cash' ? null : 'cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{formatMoney(cash)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'tw' ? null : 'tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{formatMoney(tw)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'us' ? null : 'us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">美股</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{formatMoney(us)}</div>}</div>
                     </div>
                 </div>
             );
@@ -312,40 +194,14 @@
             const normalizedRadius = radius - stroke * 2;
             const circumference = normalizedRadius * 2 * Math.PI;
             const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
             return (
                 <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
-                    <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-sm font-bold text-white">{title}</h3>
-                            <button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><i data-lucide="edit-2" className="w-3 h-3"></i></button>
-                            <button onClick={onDelete} className="text-slate-500 hover:text-red-400"><i data-lucide="trash" className="w-3 h-3"></i></button>
-                        </div>
-                        <div className="text-xs text-slate-400 mb-1">目標: {formatMoney(target)}</div>
-                        <div className="text-lg font-mono text-blue-400 font-bold">{formatMoney(current)}</div>
-                    </div>
-                    <div className="relative w-20 h-20 flex items-center justify-center">
-                         <svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]">
-                            <circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" />
-                            <circle
-                                stroke={percentage >= 100 ? '#10b981' : '#3b82f6'}
-                                strokeWidth={stroke}
-                                strokeDasharray={circumference + ' ' + circumference}
-                                style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }}
-                                strokeLinecap="round"
-                                r={normalizedRadius}
-                                cx={radius}
-                                cy={radius}
-                                fill="transparent"
-                            />
-                        </svg>
-                        <span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span>
-                    </div>
+                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><i data-lucide="edit-2" className="w-3 h-3"></i></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><i data-lucide="trash" className="w-3 h-3"></i></button></div><div className="text-xs text-slate-400 mb-1">目標: {formatMoney(target)}</div><div className="text-lg font-mono text-blue-400 font-bold">{formatMoney(current)}</div></div>
+                    <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span></div>
                 </div>
             );
         };
 
-        // --- 輔助函式 ---
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
         const formatUSD = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount);
 
@@ -410,7 +266,6 @@
                     us: Math.round(totalUsAssetsTWD),
                     total: Math.round(totalNetWorth)
                 };
-
                 if (!lastRecord || lastRecord.date !== today) {
                     setHistory(prev => [...prev, newRecord]);
                 } else if (Math.abs(lastRecord.total - totalNetWorth) > 100) {
@@ -432,65 +287,43 @@
             const fetchLiveData = async () => {
                 if (!finnhubKey) { alert('請檢查 API Key (設定 -> Finnhub Key)'); return; }
                 setIsUpdating(true);
+                let msg = '';
                 try {
-                    try { const rateRes = await fetch('https://open.er-api.com/v6/latest/USD'); const rateData = await rateRes.json(); if (rateData?.rates?.TWD) setExchangeRate(rateData.rates.TWD); } catch (e) {}
+                    // Exchange Rate
+                    try { 
+                        const rateRes = await fetch('https://open.er-api.com/v6/latest/USD'); 
+                        const rateData = await rateRes.json(); 
+                        if (rateData?.rates?.TWD) {
+                            setExchangeRate(rateData.rates.TWD);
+                            msg += `匯率: ${rateData.rates.TWD.toFixed(2)} `;
+                        }
+                    } catch (e) { console.warn('Rate API Error', e); msg += '匯率失敗 '; }
+
                     const fetchPrice = async (ticker) => { try { const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${finnhubKey}`); const data = await res.json(); return data.c || null; } catch (e) { return null; } };
-                    const newUsStocks = await Promise.all(usStocks.map(async (s) => { const price = await fetchPrice(s.ticker); return price ? { ...s, price } : s; })); setUsStocks(newUsStocks);
-                    const newTwStocks = await Promise.all(twStocks.map(async (s) => { const price = await fetchPrice(s.ticker); return price ? { ...s, price } : s; })); setTwStocks(newTwStocks);
+                    
+                    // Stocks
+                    let updatedCount = 0;
+                    const newUsStocks = await Promise.all(usStocks.map(async (s) => { const price = await fetchPrice(s.ticker); if(price) updatedCount++; return price ? { ...s, price } : s; })); setUsStocks(newUsStocks);
+                    const newTwStocks = await Promise.all(twStocks.map(async (s) => { const price = await fetchPrice(s.ticker); if(price) updatedCount++; return price ? { ...s, price } : s; })); setTwStocks(newTwStocks);
+                    
                     setLastUpdate(new Date().toLocaleTimeString());
-                } catch (error) { alert('更新失敗'); } finally { setIsUpdating(false); }
+                    alert(`更新完成！\n${msg}\n同步股價: ${updatedCount} 檔`);
+
+                } catch (error) { alert('更新過程發生未知錯誤'); } finally { setIsUpdating(false); }
             };
 
             // Backup & Restore
-            const exportData = () => {
-                const data = { cash, twStocks, usStocks, usCash, goals, sopList, sopDetails, history, exchangeRate, finnhubKey };
-                const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `assetpilot_backup_${new Date().toISOString().slice(0,10)}.json`;
-                a.click();
-            };
-
-            const importData = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        if (confirm('確定要還原備份資料嗎？這將覆蓋目前的紀錄。')) {
-                            if(data.cash) setCash(data.cash);
-                            if(data.twStocks) setTwStocks(data.twStocks);
-                            if(data.usStocks) setUsStocks(data.usStocks);
-                            if(data.usCash !== undefined) setUsCash(data.usCash);
-                            if(data.goals) setGoals(data.goals);
-                            if(data.sopList) setSopList(data.sopList);
-                            if(data.sopDetails) setSopDetails(data.sopDetails);
-                            if(data.history) setHistory(data.history);
-                            if(data.exchangeRate) setExchangeRate(data.exchangeRate);
-                            if(data.finnhubKey) setFinnhubKey(data.finnhubKey);
-                            alert('還原成功！');
-                            setShowSettings(false);
-                        }
-                    } catch (err) { alert('檔案格式錯誤'); }
-                };
-                reader.readAsText(file);
-            };
+            const exportData = () => { const data = { cash, twStocks, usStocks, usCash, goals, sopList, sopDetails, history, exchangeRate, finnhubKey }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.usStocks) setUsStocks(data.usStocks); if(data.usCash !== undefined) setUsCash(data.usCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.exchangeRate) setExchangeRate(data.exchangeRate); if(data.finnhubKey) setFinnhubKey(data.finnhubKey); alert('還原成功！'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             // Handlers
             const handleDeleteItem = (id, type) => { if (!confirm('確定刪除？')) return; type==='cash'?setCash(p=>p.filter(i=>i.id!==id)):type==='stockTW'?setTwStocks(p=>p.filter(i=>i.id!==id)):setUsStocks(p=>p.filter(i=>i.id!==id)); setEditItem(null); };
             const handleAddItem = (type, name, val) => { const id=Math.random().toString(36).substr(2,9); type==='cash'?setCash([...cash,{id,name,balance:parseFloat(val),locked:false}]):type==='stockTW'?setTwStocks([...twStocks,{id,ticker:name.toUpperCase().includes('.')?name.toUpperCase():name.toUpperCase()+'.TW',name:name.toUpperCase(),shares:parseFloat(val),price:0}]):setUsStocks([...usStocks,{id,ticker:name.toUpperCase(),name:name.toUpperCase(),shares:parseFloat(val),price:0}]); setAddItemType(null); };
             const handleUpdateValue = (id, type, val) => { const num=parseFloat(val); type==='cash'?setCash(p=>p.map(i=>i.id===id?{...i,balance:num}:i)):type==='cashUS'?setUsCash(num):type==='stockTW'?setTwStocks(p=>p.map(i=>i.id===id?{...i,shares:num}:i)):setUsStocks(p=>p.map(i=>i.id===id?{...i,shares:num}:i)); setEditItem(null); };
-            
-            const toggleSop = (id) => {
-                setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-            };
+            const toggleSop = (id) => { setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
             const deleteSop=(id)=>setSopList(p=>p.filter(s=>s.id!==id));
             const addSop=()=>{const t=prompt("任務內容：");if(t)setSopList([...sopList,{id:Date.now(),text:t,completed:false}])};
             const editSopText=(id,ot)=>{const nt=prompt("修改：",ot);if(nt)setSopList(p=>p.map(s=>s.id===id?{...s,text:nt}:s))};
-
-            // Goal Handlers
             const handleAddGoal = (title, target) => setGoals([...goals, { id: Date.now(), title, target: parseFloat(target) }]);
             const handleUpdateGoal = (id, title, target) => { setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target) } : g)); setEditGoal(null); };
             const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) setGoals(prev => prev.filter(g => g.id !== id)); };
@@ -520,10 +353,9 @@
                         </div>
                     </header>
 
-                    {/* Tab 1: Dashboard (戰情室) */}
+                    {/* Dashboard */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
-                            {/* Trend Chart */}
                             <div className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-xs text-slate-400 font-bold uppercase">資產趨勢</h3>
@@ -538,55 +370,19 @@
                                         <button key={m.id} onClick={() => setTrendMode(m.id)} className={`text-xs font-bold whitespace-nowrap pb-1 border-b-2 transition-colors ${trendMode === m.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500'}`}>{m.l}</button>
                                     ))}
                                 </div>
-                                {history.length > 0 ? (
-                                    <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} />
-                                ) : (
-                                    <div className="h-48 flex items-center justify-center text-slate-500 text-xs">尚無歷史數據，請匯入或等待每日記錄</div>
-                                )}
+                                <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} />
                             </div>
-
-                            {/* Allocation Bar */}
                             <div className="glass-panel rounded-xl p-4">
                                 <h3 className="text-xs text-slate-400 font-bold uppercase mb-4">資產配置</h3>
                                 <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalUsAssetsTWD} total={totalNetWorth} />
                             </div>
-                            
-                            {/* SOP Panel */}
                             <div className="glass-panel rounded-xl p-4">
                                 <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <h3 className="text-xs text-slate-400 uppercase tracking-wider font-bold">Monthly Action</h3>
-                                        <button onClick={() => setShowSopModal(true)} className="text-slate-500 hover:text-yellow-400"><i data-lucide="lightbulb" className="w-4 h-4"></i></button>
-                                    </div>
+                                    <div className="flex items-center gap-2"><h3 className="text-xs text-slate-400 uppercase tracking-wider font-bold">Monthly Action</h3><button onClick={() => setShowSopModal(true)} className="text-slate-500 hover:text-yellow-400"><i data-lucide="lightbulb" className="w-4 h-4"></i></button></div>
                                     <button onClick={() => setSopEditMode(!sopEditMode)} className="text-xs text-blue-400">{sopEditMode ? '完成' : '編輯'}</button>
                                 </div>
                                 <div className="space-y-2">
-                                    {sopList.length > 0 ? sopList.map(sop => (
-                                        <div key={sop.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                                            <div className="flex items-center text-sm text-slate-300 flex-1 cursor-pointer" onClick={() => !sopEditMode && toggleSop(sop.id)}>
-                                                {/* Native SVG to prevent crash */}
-                                                <div className={`w-5 h-5 rounded border mr-3 flex items-center justify-center transition-colors ${sop.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
-                                                    {sop.completed && (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                            <polyline points="20 6 9 17 4 12"></polyline>
-                                                        </svg>
-                                                    )}
-                                                </div>
-                                                <span 
-                                                    className={`${sop.completed ? 'line-through text-slate-600' : ''} ${sopEditMode ? 'underline decoration-dashed decoration-slate-600' : ''}`}
-                                                    onClick={(e) => {
-                                                        if (sopEditMode) {
-                                                            e.stopPropagation();
-                                                            editSopText(sop.id, sop.text);
-                                                        }
-                                                    }}
-                                                >
-                                                    {sop.text}
-                                                </span>
-                                            </div>
-                                            {sopEditMode && <button onClick={() => deleteSop(sop.id)} className="ml-2 text-red-500"><i data-lucide="trash-2" className="w-4 h-4"></i></button>}
-                                        </div>
-                                    )) : <div className="text-xs text-slate-500 text-center py-2">無待辦事項 (請匯入設定檔)</div>}
+                                    {sopList.length > 0 ? sopList.map(sop => (<div key={sop.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50"><div className="flex items-center text-sm text-slate-300 flex-1 cursor-pointer" onClick={() => !sopEditMode && toggleSop(sop.id)}><div className={`w-5 h-5 rounded border mr-3 flex items-center justify-center transition-colors ${sop.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>{sop.completed && (<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>)}</div><span className={`${sop.completed ? 'line-through text-slate-600' : ''} ${sopEditMode ? 'underline decoration-dashed decoration-slate-600' : ''}`} onClick={(e) => { if (sopEditMode) { e.stopPropagation(); editSopText(sop.id, sop.text); }}}>{sop.text}</span></div>{sopEditMode && <button onClick={() => deleteSop(sop.id)} className="ml-2 text-red-500"><i data-lucide="trash-2" className="w-4 h-4"></i></button>}</div>)) : <div className="text-xs text-slate-500 text-center py-2">無待辦事項 (請匯入設定檔)</div>}
                                     {sopEditMode && <button onClick={addSop} className="w-full py-2 text-xs border border-dashed border-slate-600 text-slate-500 rounded hover:border-slate-400 hover:text-slate-400">+ 新增任務</button>}
                                 </div>
                             </div>
@@ -597,160 +393,30 @@
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
-                            
-                            {/* Cash Section */}
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                                <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center">
-                                    <span className="text-sm font-bold text-emerald-400 flex items-center"><i data-lucide="wallet" className="w-4 h-4 mr-2"></i> 台幣現金</span>
-                                    <div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalCashTWD)}</span><button onClick={() => setAddItemType('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div>
-                                </div>
-                                {cash.length === 0 && <div className="p-4 text-center text-xs text-slate-500">無資料，請新增或匯入</div>}
-                                {cash.map(item => (
-                                    <div key={item.id} onClick={() => setEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer">
-                                        <div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.locked ? '🔒 封存' : '🟢 活存'}</div></div>
-                                        <div className="text-sm font-mono text-emerald-400">{formatMoney(item.balance)}</div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* US Stocks Section */}
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                                <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center">
-                                    <span className="text-sm font-bold text-purple-400 flex items-center"><i data-lucide="globe" className="w-4 h-4 mr-2"></i> 美股現貨</span>
-                                    <div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalUsAssetsTWD)}</span><button onClick={() => setAddItemType('stockUS')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div>
-                                </div>
-                                <div onClick={() => setEditItem({ type: 'cashUS', data: { name: 'Firstrade 餘額', balance: usCash } })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer">
-                                    <div className="text-sm text-slate-200">Firstrade 閒置金</div><div className="text-sm font-mono text-purple-300">{formatUSD(usCash)}</div>
-                                </div>
-                                {usStocks.map(item => (
-                                    <div key={item.id} onClick={() => setEditItem({ type: 'stockUS', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer">
-                                        <div><div className="text-sm text-slate-200 font-bold">{item.ticker}</div><div className="text-[10px] text-slate-500 font-mono">{item.name} • {item.shares} 股</div></div>
-                                        <div className="text-right"><div className="text-sm font-mono text-purple-400">{formatUSD(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* TW Stocks Section */}
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                                <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center">
-                                    <span className="text-sm font-bold text-sky-400 flex items-center"><i data-lucide="trending-up" className="w-4 h-4 mr-2"></i> 台股現貨</span>
-                                    <div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalTwStocksTWD)}</span><button onClick={() => setAddItemType('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div>
-                                </div>
-                                {twStocks.map(item => (
-                                    <div key={item.id} onClick={() => setEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer">
-                                        <div><div className="text-sm text-slate-200 font-bold">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div></div>
-                                        <div className="text-right"><div className="text-sm font-mono text-sky-400">{formatMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div>
-                                    </div>
-                                ))}
-                            </div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><i data-lucide="wallet" className="w-4 h-4 mr-2"></i> 台幣現金</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalCashTWD)}</span><button onClick={() => setAddItemType('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{cash.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.locked ? '🔒 封存' : '🟢 活存'}</div></div><div className="text-sm font-mono text-emerald-400">{formatMoney(item.balance)}</div></div>))}</div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><i data-lucide="globe" className="w-4 h-4 mr-2"></i> 美股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalUsAssetsTWD)}</span><button onClick={() => setAddItemType('stockUS')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div><div onClick={() => setEditItem({ type: 'cashUS', data: { name: 'Firstrade 餘額', balance: usCash } })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="text-sm text-slate-200">Firstrade 閒置金</div><div className="text-sm font-mono text-purple-300">{formatUSD(usCash)}</div></div>{usStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockUS', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.ticker}</div><div className="text-[10px] text-slate-500 font-mono">{item.name} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-purple-400">{formatUSD(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div></div>))}</div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><i data-lucide="trending-up" className="w-4 h-4 mr-2"></i> 台股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalTwStocksTWD)}</span><button onClick={() => setAddItemType('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{twStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-sky-400">{formatMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div></div>))}</div>
                         </div>
                     )}
 
                     {/* Tab 3: Analysis (分析 - Goals & Report) */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
-                            {/* Goals Section */}
-                            <div>
-                                <div className="flex justify-between items-center mb-3">
-                                    <h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3>
-                                    <button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增</button>
-                                </div>
-                                <div className="space-y-3">
-                                    {goals.length === 0 && <div className="text-xs text-slate-500 text-center py-4">尚無目標，請新增或匯入</div>}
-                                    {goals.map(g => (
-                                        <CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Reports Section */}
-                            <div>
-                                <h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3>
-                                <div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500">
-                                    <h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3>
-                                    <div className="text-2xl font-bold text-white mb-2">
-                                        {history.length > 0 ? formatMoney(history[history.length-1].total - history[0].total) : '$0'}
-                                        <span className="text-sm font-normal text-emerald-400 ml-2">
-                                            {history.length > 0 ? ((history[history.length-1].total - history[0].total) / history[0].total * 100).toFixed(2) : '0'}%
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-slate-500">累積盈虧 (YTD)</div>
-                                </div>
-                                <div className="space-y-3">
-                                    {monthlyReportData.map((report, idx) => {
-                                        const prevMonth = monthlyReportData[idx + 1];
-                                        const diff = prevMonth ? report.total - prevMonth.total : 0;
-                                        const diffPercent = prevMonth ? (diff / prevMonth.total * 100).toFixed(2) : 0;
-                                        return (
-                                            <div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center">
-                                                <div>
-                                                    <div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div>
-                                                    <div className="text-xs text-slate-500">結算日: {report.date}</div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-sm font-mono text-white">{formatMoney(report.total)}</div>
-                                                    <div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                        {diff >= 0 ? '+' : ''}{formatMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    {monthlyReportData.length === 0 && <div className="text-xs text-slate-500 text-center">尚無足夠歷史數據進行結算</div>}
-                                </div>
-                            </div>
+                            <div><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} />))}</div></div>
+                            <div><h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3><div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500"><h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3><div className="text-2xl font-bold text-white mb-2">{history.length > 0 ? formatMoney(history[history.length-1].total - history[0].total) : '$0'}<span className="text-sm font-normal text-emerald-400 ml-2">{history.length > 0 ? ((history[history.length-1].total - history[0].total) / history[0].total * 100).toFixed(2) : '0'}%</span></div><div className="text-xs text-slate-500">累積盈虧 (YTD)</div></div><div className="space-y-3">{monthlyReportData.map((report, idx) => { const prevMonth = monthlyReportData[idx + 1]; const diff = prevMonth ? report.total - prevMonth.total : 0; const diffPercent = prevMonth ? (diff / prevMonth.total * 100).toFixed(2) : 0; return (<div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center"><div><div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div><div className="text-xs text-slate-500">結算日: {report.date}</div></div><div className="text-right"><div className="text-sm font-mono text-white">{formatMoney(report.total)}</div><div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}{formatMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)</div></div></div>); })}</div></div>
                         </div>
                     )}
 
-                    {/* Navigation Bar (3 Tabs) */}
+                    {/* Navigation */}
                     <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex justify-around pb-safe-area-bottom z-50 h-20 items-start pt-3">
                         <TabButton id="dashboard" label="戰情室" icon="layout-dashboard" />
                         <TabButton id="wallet" label="金庫" icon="wallet" />
                         <TabButton id="analysis" label="分析" icon="pie-chart" />
                     </nav>
 
-                    {/* Settings Modal */}
-                    {showSettings && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}>
-                            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-6">
-                                    <h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3>
-                                    <button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
-                                </div>
-                                <div className="space-y-4">
-                                    <div><label className="block text-xs text-slate-400 mb-2">Finnhub API Key</label><input type="text" value={finnhubKey} onChange={(e) => setFinnhubKey(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-xs focus:border-blue-500 outline-none mb-2"/></div>
-                                    <div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div>
-                                    <div className="pt-2 border-t border-slate-700">
-                                        <label className="block text-xs text-slate-400 mb-2">資料備份/還原</label>
-                                        <div className="flex gap-2">
-                                            <button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button>
-                                            <label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">
-                                                匯入 (Restore)
-                                                <input type="file" className="hidden" onChange={importData} accept=".json" />
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* SOP Details Modal */}
-                    {showSopModal && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}>
-                            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div>
-                                <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                                    {sopDetails.length > 0 ? sopDetails.map((section, idx) => (
-                                        <div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>
-                                    )) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* Other Modals (Add/Edit) */}
+                    {/* Modals (Collapsed for brevity but same logic) */}
+                    {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">Finnhub API Key</label><input type="text" value={finnhubKey} onChange={(e) => setFinnhubKey(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono text-xs focus:border-blue-500 outline-none mb-2"/></div><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
+                    {showSopModal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}</div></div></div>)}
                     {editItem && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額' : '更新股數'}</h3><button onClick={() => setEditItem(null)} className="text-slate-400"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="text-sm text-blue-400 mb-4 font-mono">{editItem.data.name || editItem.data.ticker}</div>{editItem.type.includes('cash') ? (<Calculator initialValue={editItem.type === 'cashUS' ? editItem.data.balance : editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val)} />) : (<><input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus /><div className="flex gap-3"><button onClick={() => handleDeleteItem(editItem.data.id, editItem.type)} className="py-4 px-6 rounded-xl bg-red-500/10 text-red-500"><i data-lucide="trash-2" className="w-5 h-5"></i></button><button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button></div></>)}</div></div>)}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => setAddItemType(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '帳戶名稱' : '股票代號 (例: 2330.TW)'}</label><input id="addName" type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '初始金額' : '持有股數'}</label><input id="addVal" type="number" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const name = document.getElementById('addName').value; const val = document.getElementById('addVal').value; if(name && val) handleAddItem(addItemType, name, val);}} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
                     {editGoal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{editGoal.id ? '編輯目標' : '新增目標'}</h3><button onClick={() => setEditGoal(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input id="goalTitle" type="text" defaultValue={editGoal.title} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">目標金額</label><input id="goalTarget" type="number" defaultValue={editGoal.target} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const t = document.getElementById('goalTitle').value; const v = document.getElementById('goalTarget').value; if(t && v) { if(editGoal.id) handleUpdateGoal(editGoal.id, t, v); else { handleAddGoal(t, v); setEditGoal(null); } }}} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg">儲存目標</button></div></div>)}
