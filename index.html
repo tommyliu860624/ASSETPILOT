@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot</title>
+    <title>AssetPilot 2026</title>
     
     <!-- PWA Settings -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -12,11 +12,11 @@
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
-    <!-- Libraries -->
+    <!-- Libraries (Updated to cdnjs for better stability) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -33,14 +33,6 @@
         .calc-btn:active { background-color: rgba(71, 85, 105, 0.8); transform: scale(0.95); }
         .calc-btn.op { background-color: #f59e0b; color: white; }
         .calc-btn.eq { background-color: #3b82f6; color: white; }
-        /* iOS Date Input Fix */
-        input[type="date"] {
-            color-scheme: dark;
-            appearance: none;
-            -webkit-appearance: none;
-            background-color: transparent;
-            min-height: 2.5rem; /* Ensure touch target */
-        }
     </style>
 </head>
 <body>
@@ -86,8 +78,8 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 ---
-        const AssetTrendChart = ({ history, timeRange, mode, customDates }) => {
+        // --- 元件：資產趨勢線圖 (V10 動態級距) ---
+        const AssetTrendChart = ({ history, timeRange, mode, customDates, isPrivacyMode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
 
@@ -118,6 +110,7 @@
                 gradient.addColorStop(0, color + '80');
                 gradient.addColorStop(1, color + '00');
 
+                // 智慧格式化
                 const smartFormatter = (val, index, ticks) => {
                     let decimals = 0;
                     if (ticks.length > 1) {
@@ -153,7 +146,10 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } } },
+                        plugins: { 
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } }
+                        },
                         scales: {
                             x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } },
                             y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } }
@@ -163,35 +159,38 @@
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [filteredData, mode]);
 
-            return <div className="h-48 w-full"><canvas ref={chartRef} /></div>;
+            // Privacy: Blur effect
+            return <div className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
         };
 
         // --- 元件：堆疊資產條 ---
-        const AllocationBar = ({ cash, tw, us, total }) => {
+        const AllocationBar = ({ cash, tw, us, total, isPrivacyMode }) => {
             if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
             const pCash = (cash / total) * 100;
             const pTw = (tw / total) * 100;
             const pUs = (us / total) * 100;
             const [selected, setSelected] = useState(null);
 
+            const displayVal = (val) => isPrivacyMode ? '****' : formatMoney(val);
+
             return (
-                <div className="w-full">
+                <div className={`w-full transition-all duration-300 ${isPrivacyMode ? 'blur-sm' : ''}`}>
                     <div className="h-6 w-full flex rounded-full overflow-hidden cursor-pointer mb-3">
                         <div style={{ width: `${pCash}%` }} className="bg-emerald-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('cash')}></div>
                         <div style={{ width: `${pTw}%` }} className="bg-sky-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('tw')}></div>
                         <div style={{ width: `${pUs}%` }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('us')}></div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'cash' ? null : 'cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{formatMoney(cash)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'tw' ? null : 'tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{formatMoney(tw)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'us' ? null : 'us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">美股</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{formatMoney(us)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'cash' ? null : 'cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{displayVal(cash)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'tw' ? null : 'tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{displayVal(tw)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'us' ? null : 'us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">美股</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{displayVal(us)}</div>}</div>
                     </div>
                 </div>
             );
         };
 
         // --- 元件：環狀目標進度 ---
-        const CircularGoal = ({ title, current, target, onEdit, onDelete }) => {
+        const CircularGoal = ({ title, current, target, onEdit, onDelete, isPrivacyMode }) => {
             const percentage = Math.min(100, Math.max(0, (current / target) * 100));
             const radius = 30;
             const stroke = 4;
@@ -200,14 +199,16 @@
             const strokeDashoffset = circumference - (percentage / 100) * circumference;
             return (
                 <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
-                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><i data-lucide="edit-2" className="w-3 h-3"></i></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><i data-lucide="trash" className="w-3 h-3"></i></button></div><div className="text-xs text-slate-400 mb-1">目標: {formatMoney(target)}</div><div className="text-lg font-mono text-blue-400 font-bold">{formatMoney(current)}</div></div>
+                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><i data-lucide="edit-2" className="w-3 h-3"></i></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><i data-lucide="trash" className="w-3 h-3"></i></button></div>
+                    <div className="text-xs text-slate-400 mb-1">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div>
+                    <div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(current)}</div></div>
                     <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span></div>
                 </div>
             );
         };
 
-        // --- 元件：更新結果視窗 (Bottom Sheet) ---
-        const UpdateResultModal = ({ results, onClose }) => {
+        // --- 元件：更新結果視窗 ---
+        const UpdateResultModal = ({ results, onClose, isPrivacyMode }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
@@ -221,7 +222,7 @@
                                     <div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs">
                                         <span className="text-slate-300 font-mono">{item.label}</span>
                                         <span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                                            {item.value}
+                                            {isPrivacyMode && item.label.includes('資產') ? '****' : item.value}
                                         </span>
                                     </div>
                                 ))
@@ -233,7 +234,7 @@
             );
         };
 
-        // --- 元件：日期區間選擇器 (Bottom Sheet) ---
+        // --- 元件：日期區間選擇器 ---
         const DateRangeModal = ({ currentDates, onConfirm, onClose }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
@@ -243,25 +244,115 @@
                             <button onClick={onClose} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
                         </div>
                         <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-2">開始日期</label>
-                                <input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-2">結束日期</label>
-                                <input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" />
+                            <div><label className="block text-xs text-slate-400 mb-2">開始日期</label><input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div>
+                            <div><label className="block text-xs text-slate-400 mb-2">結束日期</label><input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div>
+                        </div>
+                        <button onClick={() => { const s = document.getElementById('startDate').value; const e = document.getElementById('endDate').value; if (s && e) onConfirm(s, e); }} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 元件：SOP 編輯與顯示 (Update: Fully Editable) ---
+        const SopDetailsModal = ({ sopDetails, setSopDetails, onClose }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            
+            // CRUD for Sections
+            const addSection = () => {
+                const title = prompt("請輸入新章節標題：");
+                if(title) setSopDetails([...sopDetails, { title, steps: [] }]);
+            };
+            const deleteSection = (idx) => {
+                if(confirm("確定刪除此章節？")) setSopDetails(sopDetails.filter((_, i) => i !== idx));
+            };
+            const updateSectionTitle = (idx, newTitle) => {
+                const newDetails = [...sopDetails];
+                newDetails[idx].title = newTitle;
+                setSopDetails(newDetails);
+            };
+
+            // CRUD for Steps
+            const addStep = (sectionIdx) => {
+                const step = prompt("請輸入新步驟：");
+                if(step) {
+                    const newDetails = [...sopDetails];
+                    newDetails[sectionIdx].steps.push(step);
+                    setSopDetails(newDetails);
+                }
+            };
+            const deleteStep = (sectionIdx, stepIdx) => {
+                const newDetails = [...sopDetails];
+                newDetails[sectionIdx].steps = newDetails[sectionIdx].steps.filter((_, i) => i !== stepIdx);
+                setSopDetails(newDetails);
+            };
+            const updateStep = (sectionIdx, stepIdx, newText) => {
+                const newDetails = [...sopDetails];
+                newDetails[sectionIdx].steps[stepIdx] = newText;
+                setSopDetails(newDetails);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                            <h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setIsEditing(!isEditing)} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>
+                                    {isEditing ? '完成' : '編輯'}
+                                </button>
+                                <button onClick={onClose} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button>
                             </div>
                         </div>
-                        <button 
-                            onClick={() => {
-                                const s = document.getElementById('startDate').value;
-                                const e = document.getElementById('endDate').value;
-                                if (s && e) onConfirm(s, e);
-                            }} 
-                            className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg"
-                        >
-                            確認
-                        </button>
+                        <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                            {sopDetails.length > 0 ? sopDetails.map((section, idx) => (
+                                <div key={idx} className="bg-slate-900/50 p-3 rounded-lg relative group">
+                                    {isEditing && (
+                                        <button onClick={() => deleteSection(idx)} className="absolute top-2 right-2 text-red-500 opacity-50 hover:opacity-100"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                    )}
+                                    {isEditing ? (
+                                        <input 
+                                            type="text" 
+                                            value={section.title} 
+                                            onChange={(e) => updateSectionTitle(idx, e.target.value)}
+                                            className="bg-transparent border-b border-blue-500 text-sm font-bold text-blue-400 mb-2 w-full outline-none"
+                                        />
+                                    ) : (
+                                        <h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4>
+                                    )}
+                                    
+                                    <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
+                                        {section.steps.map((step, sIdx) => (
+                                            <li key={sIdx} className="flex items-center justify-between group/step">
+                                                {isEditing ? (
+                                                    <input 
+                                                        type="text" 
+                                                        value={step} 
+                                                        onChange={(e) => updateStep(idx, sIdx, e.target.value)}
+                                                        className="bg-transparent border-b border-slate-600 w-full outline-none"
+                                                    />
+                                                ) : (
+                                                    <span>{step}</span>
+                                                )}
+                                                {isEditing && (
+                                                    <button onClick={() => deleteStep(idx, sIdx)} className="ml-2 text-red-400"><i data-lucide="minus-circle" className="w-3 h-3"></i></button>
+                                                )}
+                                            </li>
+                                        ))}
+                                        {isEditing && (
+                                            <li className="list-none pt-2">
+                                                <button onClick={() => addStep(idx)} className="text-xs text-emerald-400 flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增步驟</button>
+                                            </li>
+                                        )}
+                                    </ul>
+                                </div>
+                            )) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明</div>}
+                            
+                            {isEditing && (
+                                <button onClick={addSection} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">
+                                    + 新增章節
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             );
@@ -275,19 +366,17 @@
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
             const [usStocks, setUsStocks] = useState(() => JSON.parse(localStorage.getItem('ap_us_stocks')) || INITIAL_US_STOCKS);
-            const [usCash, setUsCash] = useState(() => {
-                const saved = localStorage.getItem('ap_us_cash');
-                return saved !== null ? parseFloat(saved) : 0;
-            });
+            const [usCash, setUsCash] = useState(() => { const saved = localStorage.getItem('ap_us_cash'); return saved !== null ? parseFloat(saved) : 0; });
             const [goals, setGoals] = useState(() => JSON.parse(localStorage.getItem('ap_goals')) || INITIAL_GOALS);
             const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [exchangeRate, setExchangeRate] = useState(() => parseFloat(localStorage.getItem('ap_rate')) || USD_RATE);
             const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || generateCorrectedHistory());
+            const [isPrivacyMode, setIsPrivacyMode] = useState(false); // Privacy Mode State
             
             const [activeTab, setActiveTab] = useState('dashboard');
             const [trendMode, setTrendMode] = useState('total'); 
-            const [timeRange, setTimeRange] = useState('1W'); // Updated Default: 1 Week
+            const [timeRange, setTimeRange] = useState('1W'); 
             const [customDates, setCustomDates] = useState({ start: '', end: '' }); 
             const [editItem, setEditItem] = useState(null);
             const [addItemType, setAddItemType] = useState(null);
@@ -320,7 +409,11 @@
             const totalUsAssetsTWD = useMemo(() => (totalUsStocksUSD + usCash) * exchangeRate, [totalUsStocksUSD, usCash, exchangeRate]);
             const totalNetWorth = totalCashTWD + totalTwStocksTWD + totalUsAssetsTWD;
 
-            // Auto-record history (Daily Snapshot)
+            // Helper for privacy
+            const displayMoney = (val) => isPrivacyMode ? '****' : formatMoney(val);
+            const displayUSD = (val) => isPrivacyMode ? '****' : formatUSD(val);
+
+            // Auto-record history
             useEffect(() => {
                 if (totalNetWorth === 0 && history.length === 0) return;
                 const today = new Date().toISOString().split('T')[0];
@@ -350,7 +443,7 @@
                 return Object.values(report).sort((a, b) => b.date.localeCompare(a.date));
             }, [history]);
 
-            // API Logic (Yahoo + CORS Proxy)
+            // API Logic
             const fetchLiveData = async () => {
                 setIsUpdating(true);
                 const reportLogs = [];
@@ -359,7 +452,6 @@
                 let newRate = exchangeRate;
 
                 try {
-                    // 1. Fetch Exchange Rate (Open API)
                     try { 
                         const rateRes = await fetch(`https://open.er-api.com/v6/latest/USD?t=${new Date().getTime()}`); 
                         const rateData = await rateRes.json(); 
@@ -369,12 +461,8 @@
                                 reportLogs.push({ label: 'USD 匯率', value: `${oldRate.toFixed(2)} -> ${newRate.toFixed(2)}`, diff: newRate - oldRate });
                             }
                         }
-                    } catch (e) { 
-                        console.warn('Rate API Error', e); 
-                        reportLogs.push({ label: '匯率更新', value: '失敗 (使用舊值)', diff: 0 });
-                    }
+                    } catch (e) { console.warn('Rate API Error', e); }
 
-                    // 2. Yahoo Finance Fetcher
                     const fetchYahooPrice = async (ticker) => { 
                         try { 
                             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d`;
@@ -383,10 +471,9 @@
                             const data = await res.json(); 
                             const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
                             return price || null; 
-                        } catch (e) { console.error(`Failed to fetch ${ticker}`, e); return null; } 
+                        } catch (e) { return null; } 
                     };
                     
-                    // Update US Stocks
                     const newUsStocks = await Promise.all(usStocks.map(async (s) => { 
                         const price = await fetchYahooPrice(s.ticker); 
                         if (price && price !== s.price) {
@@ -396,7 +483,6 @@
                         return s; 
                     })); 
                     
-                    // Update TW Stocks
                     const newTwStocks = await Promise.all(twStocks.map(async (s) => { 
                         const price = await fetchYahooPrice(s.ticker); 
                         if (price && price !== s.price) {
@@ -406,7 +492,6 @@
                         return s; 
                     })); 
 
-                    // 3. Batch Update State
                     setExchangeRate(newRate);
                     setUsStocks(newUsStocks);
                     setTwStocks(newTwStocks);
@@ -422,19 +507,14 @@
                     setLastUpdate(new Date().toLocaleTimeString());
                     setUpdateResults(reportLogs); 
 
-                } catch (error) { 
-                    console.error(error);
-                    alert('更新過程發生錯誤，請稍後再試。'); 
-                } finally { 
-                    setIsUpdating(false); 
-                }
+                } catch (error) { alert('更新過程發生錯誤，請稍後再試。'); } finally { setIsUpdating(false); }
             };
 
             // Backup & Restore
             const exportData = () => { const data = { cash, twStocks, usStocks, usCash, goals, sopList, sopDetails, history, exchangeRate }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.usStocks) setUsStocks(data.usStocks); if(data.usCash !== undefined) setUsCash(data.usCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.exchangeRate) setExchangeRate(data.exchangeRate); alert('還原成功！'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
-            // Handlers
+            // Handlers (Standard)
             const handleDeleteItem = (id, type) => { if (!confirm('確定刪除？')) return; type==='cash'?setCash(p=>p.filter(i=>i.id!==id)):type==='stockTW'?setTwStocks(p=>p.filter(i=>i.id!==id)):setUsStocks(p=>p.filter(i=>i.id!==id)); setEditItem(null); };
             const handleAddItem = (type, name, val) => { const id=Math.random().toString(36).substr(2,9); type==='cash'?setCash([...cash,{id,name,balance:parseFloat(val),locked:false}]):type==='stockTW'?setTwStocks([...twStocks,{id,ticker:name.toUpperCase().includes('.')?name.toUpperCase():name.toUpperCase()+'.TW',name:name.toUpperCase(),shares:parseFloat(val),price:0}]):setUsStocks([...usStocks,{id,ticker:name.toUpperCase(),name:name.toUpperCase(),shares:parseFloat(val),price:0}]); setAddItemType(null); };
             const handleUpdateValue = (id, type, val) => { const num=parseFloat(val); type==='cash'?setCash(p=>p.map(i=>i.id===id?{...i,balance:num}:i)):type==='cashUS'?setUsCash(num):type==='stockTW'?setTwStocks(p=>p.map(i=>i.id===id?{...i,shares:num}:i)):setUsStocks(p=>p.map(i=>i.id===id?{...i,shares:num}:i)); setEditItem(null); };
@@ -461,17 +541,23 @@
                                 <i data-lucide="shield-check" className="w-3 h-3 mr-1 text-emerald-500"></i>AssetPilot
                             </h1>
                             <div className="flex items-center gap-3">
+                                {/* Privacy Toggle Button */}
+                                <button onClick={() => setIsPrivacyMode(!isPrivacyMode)} className={`text-slate-400 hover:text-white transition-colors`}>
+                                    <i data-lucide={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4"></i>
+                                </button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
                                 <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white"><i data-lucide="settings" className="w-4 h-4"></i></button>
                             </div>
                         </div>
                         <div className="flex justify-between items-end">
-                            <div className="text-4xl font-bold text-white tracking-tight font-mono text-gradient">{formatMoney(totalNetWorth)}</div>
+                            <div className="text-4xl font-bold text-white tracking-tight font-mono text-gradient">
+                                {displayMoney(totalNetWorth)}
+                            </div>
                             <button onClick={fetchLiveData} disabled={isUpdating} className={`mb-2 p-2 rounded-full bg-slate-800 border border-slate-700 text-blue-400 active:scale-95 transition-all ${isUpdating ? 'opacity-50' : ''}`}><i data-lucide="refresh-cw" className={`w-5 h-5 ${isUpdating ? 'animate-spin' : ''}`}></i></button>
                         </div>
                     </header>
 
-                    {/* Real-time Exchange Rate Display */}
+                    {/* Real-time Exchange Rate Display (Always visible) */}
                     <div className="px-6 pt-2 pb-0 flex justify-center">
                         <div className="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 flex items-center gap-2">
                             <span className="text-[10px] text-slate-400 uppercase tracking-wider">USD/TWD</span>
@@ -500,11 +586,11 @@
                                         <button key={m.id} onClick={() => setTrendMode(m.id)} className={`text-xs font-bold whitespace-nowrap pb-1 border-b-2 transition-colors ${trendMode === m.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500'}`}>{m.l}</button>
                                     ))}
                                 </div>
-                                <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} customDates={customDates} />
+                                <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} customDates={customDates} isPrivacyMode={isPrivacyMode} />
                             </div>
                             <div className="glass-panel rounded-xl p-4">
                                 <h3 className="text-xs text-slate-400 font-bold uppercase mb-4">資產配置</h3>
-                                <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalUsAssetsTWD} total={totalNetWorth} />
+                                <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalUsAssetsTWD} total={totalNetWorth} isPrivacyMode={isPrivacyMode} />
                             </div>
                             <div className="glass-panel rounded-xl p-4">
                                 <div className="flex justify-between items-center mb-3">
@@ -523,17 +609,17 @@
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><i data-lucide="wallet" className="w-4 h-4 mr-2"></i> 台幣現金</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalCashTWD)}</span><button onClick={() => setAddItemType('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{cash.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.locked ? '🔒 封存' : '🟢 活存'}</div></div><div className="text-sm font-mono text-emerald-400">{formatMoney(item.balance)}</div></div>))}</div>
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><i data-lucide="globe" className="w-4 h-4 mr-2"></i> 美股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalUsAssetsTWD)}</span><button onClick={() => setAddItemType('stockUS')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div><div onClick={() => setEditItem({ type: 'cashUS', data: { name: 'Firstrade 餘額', balance: usCash } })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="text-sm text-slate-200">Firstrade 閒置金</div><div className="text-sm font-mono text-purple-300">{formatUSD(usCash)}</div></div>{usStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockUS', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.ticker}</div><div className="text-[10px] text-slate-500 font-mono">{item.name} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-purple-400">{formatUSD(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div></div>))}</div>
-                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><i data-lucide="trending-up" className="w-4 h-4 mr-2"></i> 台股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{formatMoney(totalTwStocksTWD)}</span><button onClick={() => setAddItemType('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{twStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-sky-400">{formatMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price}</div></div></div>))}</div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><i data-lucide="wallet" className="w-4 h-4 mr-2"></i> 台幣現金</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{displayMoney(totalCashTWD)}</span><button onClick={() => setAddItemType('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{cash.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.locked ? '🔒 封存' : '🟢 活存'}</div></div><div className="text-sm font-mono text-emerald-400">{displayMoney(item.balance)}</div></div>))}</div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><i data-lucide="globe" className="w-4 h-4 mr-2"></i> 美股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{displayMoney(totalUsAssetsTWD)}</span><button onClick={() => setAddItemType('stockUS')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div><div onClick={() => setEditItem({ type: 'cashUS', data: { name: 'Firstrade 餘額', balance: usCash } })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="text-sm text-slate-200">Firstrade 閒置金</div><div className="text-sm font-mono text-purple-300">{displayUSD(usCash)}</div></div>{usStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockUS', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.ticker}</div><div className="text-[10px] text-slate-500 font-mono">{item.name} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayUSD(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}</div>
+                            <div className="glass-panel rounded-xl overflow-hidden border border-slate-700"><div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><i data-lucide="trending-up" className="w-4 h-4 mr-2"></i> 台股現貨</span><div className="flex items-center"><span className="text-xs font-mono text-slate-300 mr-2">{displayMoney(totalTwStocksTWD)}</span><button onClick={() => setAddItemType('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600"><i data-lucide="plus" className="w-3 h-3"></i></button></div></div>{twStocks.map(item => (<div key={item.id} onClick={() => setEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div></div><div className="text-right"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}</div>
                         </div>
                     )}
 
                     {/* Tab 3: Analysis */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
-                            <div><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} />))}</div></div>
-                            <div><h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3><div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500"><h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3><div className="text-2xl font-bold text-white mb-2">{history.length > 0 ? formatMoney(history[history.length-1].total - history[0].total) : '$0'}<span className="text-sm font-normal text-emerald-400 ml-2">{history.length > 0 ? ((history[history.length-1].total - history[0].total) / history[0].total * 100).toFixed(2) : '0'}%</span></div><div className="text-xs text-slate-500">累積盈虧 (YTD)</div></div><div className="space-y-3">{monthlyReportData.map((report, idx) => { const prevMonth = monthlyReportData[idx + 1]; const diff = prevMonth ? report.total - prevMonth.total : 0; const diffPercent = prevMonth ? (diff / prevMonth.total * 100).toFixed(2) : 0; return (<div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center"><div><div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div><div className="text-xs text-slate-500">結算日: {report.date}</div></div><div className="text-right"><div className="text-sm font-mono text-white">{formatMoney(report.total)}</div><div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}{formatMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)</div></div></div>); })}</div></div>
+                            <div><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><i data-lucide="plus" className="w-3 h-3 mr-1"></i> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} isPrivacyMode={isPrivacyMode} />))}</div></div>
+                            <div><h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3><div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500"><h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3><div className="text-2xl font-bold text-white mb-2">{history.length > 0 ? (isPrivacyMode ? '****' : formatMoney(history[history.length-1].total - history[0].total)) : '$0'}<span className="text-sm font-normal text-emerald-400 ml-2">{history.length > 0 ? ((history[history.length-1].total - history[0].total) / history[0].total * 100).toFixed(2) : '0'}%</span></div><div className="text-xs text-slate-500">累積盈虧 (YTD)</div></div><div className="space-y-3">{monthlyReportData.map((report, idx) => { const prevMonth = monthlyReportData[idx + 1]; const diff = prevMonth ? report.total - prevMonth.total : 0; const diffPercent = prevMonth ? (diff / prevMonth.total * 100).toFixed(2) : 0; return (<div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center"><div><div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div><div className="text-xs text-slate-500">結算日: {report.date}</div></div><div className="text-right"><div className="text-sm font-mono text-white">{displayMoney(report.total)}</div><div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}{displayMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)</div></div></div>); })}</div></div>
                         </div>
                     )}
 
@@ -545,11 +631,10 @@
                     </nav>
 
                     {/* Modals */}
-                    {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} />}
+                    {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} isPrivacyMode={isPrivacyMode} />}
                     {showSettings && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="settings" className="w-5 h-5 mr-2"></i> 設定</h3><button onClick={() => setShowSettings(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">無需 API Key</label><div className="bg-slate-900/50 p-3 rounded-lg text-xs text-emerald-400 border border-emerald-500/20">目前使用 Yahoo Finance + CORS Proxy 模式，資料更即時且無需設定 Key。</div></div><div><label className="block text-xs text-slate-400 mb-2">手動匯率 (USD)</label><input type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 w-full text-white font-mono focus:border-blue-500 outline-none"/></div><div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div></div><div className="text-center mt-8"><button onClick={() => { if(confirm('重置將清除所有設定與數據，確定嗎？')) { localStorage.clear(); window.location.reload(); }}} className="text-xs text-red-500/50 hover:text-red-500">清除所有資料 (Reset)</button></div></div></div>)}
-                    {showSopModal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSopModal(false)}><div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><i data-lucide="book-open" className="w-5 h-5 mr-2 text-yellow-400"></i> 標準操作 SOP</h3><button onClick={() => setShowSopModal(false)} className="text-slate-400"><i data-lucide="x" className="w-5 h-5"></i></button></div><div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg"><h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => <li key={sIdx}>{step}</li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明 (請匯入設定檔)</div>}</div></div></div>)}
+                    {showSopModal && <SopDetailsModal sopDetails={sopDetails} setSopDetails={setSopDetails} onClose={() => setShowSopModal(false)} />}
                     {showDateModal && (<DateRangeModal currentDates={customDates} onConfirm={(s, e) => { setCustomDates({ start: s, end: e }); setTimeRange('CUSTOM'); setShowDateModal(false); }} onClose={() => setShowDateModal(false)} />)}
-                    
                     {editItem && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額' : '更新股數'}</h3><button onClick={() => setEditItem(null)} className="text-slate-400"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="text-sm text-blue-400 mb-4 font-mono">{editItem.data.name || editItem.data.ticker}</div>{editItem.type.includes('cash') ? (<Calculator initialValue={editItem.type === 'cashUS' ? editItem.data.balance : editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val)} />) : (<><input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus /><div className="flex gap-3"><button onClick={() => handleDeleteItem(editItem.data.id, editItem.type)} className="py-4 px-6 rounded-xl bg-red-500/10 text-red-500"><i data-lucide="trash-2" className="w-5 h-5"></i></button><button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button></div></>)}</div></div>)}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => setAddItemType(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '帳戶名稱' : '股票代號 (例: 2330.TW)'}</label><input id="addName" type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">{addItemType === 'cash' ? '初始金額' : '持有股數'}</label><input id="addVal" type="number" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const name = document.getElementById('addName').value; const val = document.getElementById('addVal').value; if(name && val) handleAddItem(addItemType, name, val);}} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
                     {editGoal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{editGoal.id ? '編輯目標' : '新增目標'}</h3><button onClick={() => setEditGoal(null)} className="text-slate-400 hover:text-white"><i data-lucide="x" className="w-6 h-6"></i></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input id="goalTitle" type="text" defaultValue={editGoal.title} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">目標金額</label><input id="goalTarget" type="number" defaultValue={editGoal.target} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const t = document.getElementById('goalTitle').value; const v = document.getElementById('goalTarget').value; if(t && v) { if(editGoal.id) handleUpdateGoal(editGoal.id, t, v); else { handleAddGoal(t, v); setEditGoal(null); } }}} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg">儲存目標</button></div></div>)}
@@ -562,4 +647,3 @@
     </script>
 </body>
 </html>
-
