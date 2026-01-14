@@ -58,12 +58,8 @@
             { title: "範例：每月 1 號", steps: ["檢查薪水入帳", "分配生活費"] },
             { title: "範例：每月 5 號", steps: ["確認定期定額扣款"] }
         ];
-        // Default Rates (Expanded to cover all options for better initial calculation)
-        const INITIAL_RATES = { 
-            USD: 32.50, JPY: 0.22, CNY: 4.50, EUR: 35.00, GBP: 41.00, AUD: 21.50,
-            CAD: 23.00, HKD: 4.10, SGD: 24.00, KRW: 0.024, CHF: 36.00, 
-            NZD: 19.50, THB: 0.90, VND: 0.0013, MYR: 7.00
-        };
+        // Default Rates
+        const INITIAL_RATES = { USD: 32.50, JPY: 0.22, CNY: 4.50, EUR: 35.00, GBP: 41.00, AUD: 21.50 };
 
         // 擴充幣別清單
         const CURRENCY_OPTIONS = [
@@ -84,19 +80,23 @@
             { code: 'MYR', name: '馬來西亞林吉特' }
         ];
 
-        // --- Helper Functions ---
+        // --- Helper Functions (Moved to top to prevent ReferenceError) ---
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
         const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(amount);
 
         // --- 歷史資料生成器 (空) ---
         const generateCorrectedHistory = () => [];
 
-        // --- 音效引擎 ---
+        // --- 音效引擎 (Web Audio API) ---
         const SoundEngine = {
             ctx: null,
             init: () => {
-                if (!SoundEngine.ctx) { SoundEngine.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
-                if (SoundEngine.ctx.state === 'suspended') { SoundEngine.ctx.resume(); }
+                if (!SoundEngine.ctx) {
+                    SoundEngine.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (SoundEngine.ctx.state === 'suspended') {
+                    SoundEngine.ctx.resume();
+                }
             },
             play: (type) => {
                 try {
@@ -104,21 +104,68 @@
                     const ctx = SoundEngine.ctx;
                     const osc = ctx.createOscillator();
                     const gain = ctx.createGain();
-                    osc.connect(gain); gain.connect(ctx.destination);
+                    
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    
                     const now = ctx.currentTime;
+
                     switch (type) {
-                        case 'tap': osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.05); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05); osc.start(now); osc.stop(now + 0.05); break;
-                        case 'success': osc.type = 'sine'; osc.frequency.setValueAtTime(880, now); osc.frequency.setValueAtTime(1108.73, now + 0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0.05, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); osc.start(now); osc.stop(now + 0.3); break;
-                        case 'delete': osc.type = 'triangle'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(50, now + 0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); osc.start(now); osc.stop(now + 0.2); break;
-                        case 'switch': osc.type = 'square'; osc.frequency.setValueAtTime(800, now); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03); osc.start(now); osc.stop(now + 0.03); break;
-                        case 'pop': osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.linearRampToValueAtTime(600, now + 0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); break;
-                        default: break;
+                        case 'tap': // Tab switch, generic button
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(600, now);
+                            osc.frequency.exponentialRampToValueAtTime(300, now + 0.05);
+                            gain.gain.setValueAtTime(0.05, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                            osc.start(now);
+                            osc.stop(now + 0.05);
+                            break;
+                        case 'success': // Save, Add, Refresh Done
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(880, now); // A5
+                            osc.frequency.setValueAtTime(1108.73, now + 0.1); // C#6
+                            gain.gain.setValueAtTime(0.05, now);
+                            gain.gain.linearRampToValueAtTime(0.05, now + 0.1);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                            osc.start(now);
+                            osc.stop(now + 0.3);
+                            break;
+                        case 'delete': // Delete item
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(150, now);
+                            osc.frequency.linearRampToValueAtTime(50, now + 0.2);
+                            gain.gain.setValueAtTime(0.1, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                            osc.start(now);
+                            osc.stop(now + 0.2);
+                            break;
+                        case 'switch': // Toggle switches
+                            osc.type = 'square';
+                            osc.frequency.setValueAtTime(800, now);
+                            gain.gain.setValueAtTime(0.02, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+                            osc.start(now);
+                            osc.stop(now + 0.03);
+                            break;
+                        case 'pop': // Open modals
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(400, now);
+                            osc.frequency.linearRampToValueAtTime(600, now + 0.1);
+                            gain.gain.setValueAtTime(0.05, now);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                            osc.start(now);
+                            osc.stop(now + 0.1);
+                            break;
+                        default:
+                            break;
                     }
-                } catch (e) { console.error("Audio playback error", e); }
+                } catch (e) {
+                    console.error("Audio playback error", e);
+                }
             }
         };
 
-        // --- Tutorial Steps ---
+        // --- Tutorial Steps Data with Target IDs (Reordered: Big to Small) ---
         const TUTORIAL_STEPS = [
             { targetId: null, title: "歡迎使用 AssetPilot", content: "全新升級的資產導航員。讓我們花 1 分鐘，帶您快速掌握資產管理的秘訣。", tab: "dashboard" },
             { targetId: "main-nav", title: "三大核心功能", content: "這是您的指揮艙。隨時切換「戰情室」、「金庫」與「分析」三大頁面，從不同維度掌握財務狀況。", tab: "dashboard" },
@@ -136,9 +183,16 @@
         ];
 
         // --- Icon Component ---
-        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
+        const Icon = React.memo(({ name, className }) => {
+            return (
+                <span 
+                    style={{ display: 'contents' }} 
+                    dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} 
+                />
+            );
+        });
 
-        // --- Toast Component ---
+        // --- Toast Component (Notification) ---
         const Toast = ({ message, show }) => (
             <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                 <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />
@@ -156,32 +210,99 @@
                     if (step.targetId) {
                         const element = document.getElementById(step.targetId);
                         if (element) {
+                            // Scroll element into view if needed
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             const rect = element.getBoundingClientRect();
-                            setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height, bottom: rect.bottom, right: rect.right });
-                        } else { setTargetRect(null); }
-                    } else { setTargetRect(null); }
+                            setTargetRect({
+                                top: rect.top,
+                                left: rect.left,
+                                width: rect.width,
+                                height: rect.height,
+                                bottom: rect.bottom,
+                                right: rect.right
+                            });
+                        } else {
+                            // Element not found fallback
+                            setTargetRect(null);
+                        }
+                    } else {
+                        setTargetRect(null);
+                    }
                 };
+
+                // Add small delay to allow tab switching animation to finish/DOM update
                 const timer = setTimeout(updatePosition, 300);
                 window.addEventListener('resize', updatePosition);
-                return () => { window.removeEventListener('resize', updatePosition); clearTimeout(timer); };
+                return () => {
+                    window.removeEventListener('resize', updatePosition);
+                    clearTimeout(timer);
+                };
             }, [stepIndex, step.targetId]);
 
+            // Determine tooltip position (Above or Below)
             const isTop = targetRect && targetRect.top > window.innerHeight / 2;
             
             return (
                 <div className="fixed inset-0 z-[300] overflow-hidden">
+                    {/* Dark Overlay with "Cutout" using box-shadow trick */}
                     {targetRect ? (
-                        <div className="absolute transition-all duration-500 ease-out border-4 border-blue-500 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.6)]"
-                            style={{ top: targetRect.top - 4, left: targetRect.left - 4, width: targetRect.width + 8, height: targetRect.height + 8, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.75)' }}></div>
-                    ) : ( <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div> )}
-                    <div className={`absolute left-0 right-0 px-6 flex justify-center transition-all duration-500 ${targetRect ? '' : 'top-1/2 -translate-y-1/2'}`}
-                        style={targetRect ? { top: isTop ? (targetRect.top - 20) : (targetRect.bottom + 20), transform: isTop ? 'translateY(-100%)' : 'none' } : {}}>
+                        <div 
+                            className="absolute transition-all duration-500 ease-out border-4 border-blue-500 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.6)]"
+                            style={{
+                                top: targetRect.top - 4,
+                                left: targetRect.left - 4,
+                                width: targetRect.width + 8,
+                                height: targetRect.height + 8,
+                                boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.75)'
+                            }}
+                        ></div>
+                    ) : (
+                        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div>
+                    )}
+
+                    {/* Tooltip Card */}
+                    <div 
+                        className={`absolute left-0 right-0 px-6 flex justify-center transition-all duration-500 ${targetRect ? '' : 'top-1/2 -translate-y-1/2'}`}
+                        style={targetRect ? { 
+                            top: isTop ? (targetRect.top - 20) : (targetRect.bottom + 20),
+                            transform: isTop ? 'translateY(-100%)' : 'none'
+                        } : {}}
+                    >
                         <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col">
-                            {targetRect && (<div className={`absolute left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 border-l border-t border-slate-600 transform rotate-45 ${isTop ? '-bottom-2 border-t-0 border-l-0 border-b border-r' : '-top-2'}`}></div>)}
-                            <div className="flex justify-between items-center mb-2"><span className="text-[10px] uppercase tracking-wider text-blue-400 font-bold">步驟 {stepIndex + 1} / {totalSteps}</span><button onClick={onClose} className="text-slate-400 hover:text-white text-xs">跳過</button></div>
-                            <h3 className="text-lg font-bold text-white mb-2">{step.title}</h3><p className="text-slate-300 text-sm leading-relaxed mb-6">{step.content}</p>
-                            <div className="flex justify-between items-center"><div className="flex gap-1">{Array.from({length: totalSteps}).map((_, i) => (<div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === stepIndex ? 'bg-blue-500' : 'bg-slate-600'}`}></div>))}</div><div className="flex gap-2">{stepIndex > 0 && (<button onClick={onPrev} className="px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-700 text-xs font-bold border border-slate-600">上一步</button>)}<button onClick={stepIndex === totalSteps - 1 ? onClose : onNext} className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center shadow-lg shadow-blue-600/20">{stepIndex === totalSteps - 1 ? '開始使用' : '下一步'}{stepIndex !== totalSteps - 1 && <Icon name="chevron-right" className="w-3 h-3 ml-1" />}</button></div></div>
+                            {/* Arrow Indicator */}
+                            {targetRect && (
+                                <div 
+                                    className={`absolute left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 border-l border-t border-slate-600 transform rotate-45 ${isTop ? '-bottom-2 border-t-0 border-l-0 border-b border-r' : '-top-2'}`}
+                                ></div>
+                            )}
+
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] uppercase tracking-wider text-blue-400 font-bold">步驟 {stepIndex + 1} / {totalSteps}</span>
+                                <button onClick={onClose} className="text-slate-400 hover:text-white text-xs">跳過</button>
+                            </div>
+                            
+                            <h3 className="text-lg font-bold text-white mb-2">{step.title}</h3>
+                            <p className="text-slate-300 text-sm leading-relaxed mb-6">{step.content}</p>
+
+                            <div className="flex justify-between items-center">
+                                <div className="flex gap-1">
+                                    {Array.from({length: totalSteps}).map((_, i) => (
+                                        <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === stepIndex ? 'bg-blue-500' : 'bg-slate-600'}`}></div>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    {stepIndex > 0 && (
+                                        <button onClick={onPrev} className="px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-700 text-xs font-bold border border-slate-600">上一步</button>
+                                    )}
+                                    <button 
+                                        onClick={stepIndex === totalSteps - 1 ? onClose : onNext} 
+                                        className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center shadow-lg shadow-blue-600/20"
+                                    >
+                                        {stepIndex === totalSteps - 1 ? '開始使用' : '下一步'}
+                                        {stepIndex !== totalSteps - 1 && <Icon name="chevron-right" className="w-3 h-3 ml-1" />}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -766,7 +887,7 @@
             };
 
             // Backup & Restore
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v19.8_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v19.9_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
@@ -1093,7 +1214,7 @@
                                             }}
                                             className={`w-10 h-5 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-600' : 'bg-slate-600'}`}
                                         >
-                                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform ${soundEnabled ? 'left-6' : 'left-1'}`}></div>
+                                            <div className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white transition-transform ${soundEnabled ? 'translate-x-5' : 'translate-x-1'}`}></div>
                                         </button>
                                     </div>
 
@@ -1109,6 +1230,22 @@
                                         </div>
                                     </div>
 
+                                    {/* Reset System Button */}
+                                    <div className="pt-2 border-t border-slate-700 mt-2">
+                                        <label className="block text-xs text-red-400 mb-2">危險區域</label>
+                                        <button 
+                                            onClick={() => {
+                                                if (confirm('警告：此操作將清除所有資料並重置系統！此動作無法復原。確定要繼續嗎？')) {
+                                                    localStorage.clear();
+                                                    window.location.reload();
+                                                }
+                                            }} 
+                                            className="w-full py-3 rounded bg-red-500/10 text-red-500 text-xs border border-red-500/50 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Icon name="alert-triangle" className="w-3 h-3" /> 重置系統資料
+                                        </button>
+                                    </div>
+
                                     {/* Replay Tutorial Button */}
                                     <div className="pt-2 border-t border-slate-700">
                                         <button onClick={replayTutorial} className="w-full py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors flex items-center justify-center gap-2">
@@ -1117,7 +1254,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v19.8</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v19.9</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
