@@ -45,7 +45,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
         // --- 預設資料 ---
         const INITIAL_CASH = [];
@@ -80,27 +80,135 @@
             { code: 'MYR', name: '馬來西亞林吉特' }
         ];
 
+        // --- Helper Functions ---
+        const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
+        const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(amount);
+
         // --- 歷史資料生成器 (空) ---
         const generateCorrectedHistory = () => [];
 
-        // --- Icon Component ---
-        const Icon = React.memo(({ name, className }) => {
-            return (
-                <span 
-                    style={{ display: 'contents' }} 
-                    dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} 
-                />
-            );
-        });
+        // --- 音效引擎 ---
+        const SoundEngine = {
+            ctx: null,
+            init: () => {
+                if (!SoundEngine.ctx) { SoundEngine.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+                if (SoundEngine.ctx.state === 'suspended') { SoundEngine.ctx.resume(); }
+            },
+            play: (type) => {
+                try {
+                    SoundEngine.init();
+                    const ctx = SoundEngine.ctx;
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    const now = ctx.currentTime;
+                    switch (type) {
+                        case 'tap': osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.05); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05); osc.start(now); osc.stop(now + 0.05); break;
+                        case 'success': osc.type = 'sine'; osc.frequency.setValueAtTime(880, now); osc.frequency.setValueAtTime(1108.73, now + 0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.linearRampToValueAtTime(0.05, now + 0.1); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); osc.start(now); osc.stop(now + 0.3); break;
+                        case 'delete': osc.type = 'triangle'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(50, now + 0.2); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2); osc.start(now); osc.stop(now + 0.2); break;
+                        case 'switch': osc.type = 'square'; osc.frequency.setValueAtTime(800, now); gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03); osc.start(now); osc.stop(now + 0.03); break;
+                        case 'pop': osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.linearRampToValueAtTime(600, now + 0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); break;
+                        default: break;
+                    }
+                } catch (e) { console.error("Audio playback error", e); }
+            }
+        };
 
-        // --- 元件：計算機 ---
-        const Calculator = ({ initialValue, onConfirm }) => {
+        // --- Tutorial Steps ---
+        const TUTORIAL_STEPS = [
+            { targetId: null, title: "歡迎使用 AssetPilot", content: "全新升級的資產導航員。讓我們花 1 分鐘，帶您快速掌握資產管理的秘訣。", tab: "dashboard" },
+            { targetId: "main-nav", title: "三大核心功能", content: "這是您的指揮艙。隨時切換「戰情室」、「金庫」與「分析」三大頁面，從不同維度掌握財務狀況。", tab: "dashboard" },
+            { targetId: "chart-area", title: "戰情室：資產趨勢", content: "首頁最顯眼的地方顯示您的資產走勢。點擊上方的按鈕可切換「時間區間」或「資產類別」，深入分析特定部位。", tab: "dashboard" },
+            { targetId: "allocation-section", title: "戰情室：資產配置", content: "一眼看穿您的資產分布。透過顏色區塊，快速了解現金、台股、外幣與海外投資的佔比，確保投資組合平衡。", tab: "dashboard" },
+            { targetId: "sop-section", title: "戰情室：每月任務", content: "理財需要紀律。在這裡設定每月的 SOP（如：發薪日分配、繳卡費），按部就班完成任務。", tab: "dashboard" },
+            { targetId: "nav-wallet", title: "前往金庫", content: "接下來我們進入「金庫」，這是您管理所有帳戶與資產的核心區域。", tab: "wallet" },
+            { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊各區塊標題旁的「+」號，即可新增該類別的帳戶或股票。系統支援台幣、15種外幣及台美股即時報價。", tab: "wallet" },
+            { targetId: "wallet-reorder-btns-cashTW", title: "金庫：自由排序", content: "每個人的習慣不同。透過箭頭，您可以自由上下移動區塊，將最常查看的資產（例如美股）移到最上方。", tab: "wallet" },
+            { targetId: "nav-analysis", title: "前往分析", content: "最後是「分析」頁面，這裡提供月度報表與目標追蹤。", tab: "analysis" },
+            { targetId: "goal-add-btn", title: "分析：設定目標", content: "想存第一桶金？設定目標金額，環狀圖會即時顯示您的達成進度，激勵您繼續前進。", tab: "analysis" },
+            { targetId: "header-refresh", title: "即時更新", content: "回到頂部工具列。點擊此按鈕，系統會立即連線更新所有「即時股價」與「匯率」，計算最新身價。", tab: "dashboard" },
+            { targetId: "header-privacy", title: "隱私保護", content: "在公共場合不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字。", tab: "dashboard" },
+            { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
+        ];
+
+        // --- Icon Component ---
+        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
+
+        // --- Toast Component ---
+        const Toast = ({ message, show }) => (
+            <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
+                <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold">{message}</span>
+            </div>
+        );
+
+        // --- Spotlight Tutorial Component ---
+        const TutorialSpotlight = ({ stepIndex, totalSteps, onNext, onPrev, onClose }) => {
+            const step = TUTORIAL_STEPS[stepIndex];
+            const [targetRect, setTargetRect] = useState(null);
+
+            useLayoutEffect(() => {
+                const updatePosition = () => {
+                    if (step.targetId) {
+                        const element = document.getElementById(step.targetId);
+                        if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            const rect = element.getBoundingClientRect();
+                            setTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height, bottom: rect.bottom, right: rect.right });
+                        } else { setTargetRect(null); }
+                    } else { setTargetRect(null); }
+                };
+                const timer = setTimeout(updatePosition, 300);
+                window.addEventListener('resize', updatePosition);
+                return () => { window.removeEventListener('resize', updatePosition); clearTimeout(timer); };
+            }, [stepIndex, step.targetId]);
+
+            const isTop = targetRect && targetRect.top > window.innerHeight / 2;
+            
+            return (
+                <div className="fixed inset-0 z-[300] overflow-hidden">
+                    {targetRect ? (
+                        <div className="absolute transition-all duration-500 ease-out border-4 border-blue-500 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.6)]"
+                            style={{ top: targetRect.top - 4, left: targetRect.left - 4, width: targetRect.width + 8, height: targetRect.height + 8, boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.75)' }}></div>
+                    ) : ( <div className="absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-500"></div> )}
+                    <div className={`absolute left-0 right-0 px-6 flex justify-center transition-all duration-500 ${targetRect ? '' : 'top-1/2 -translate-y-1/2'}`}
+                        style={targetRect ? { top: isTop ? (targetRect.top - 20) : (targetRect.bottom + 20), transform: isTop ? 'translateY(-100%)' : 'none' } : {}}>
+                        <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col">
+                            {targetRect && (<div className={`absolute left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-800 border-l border-t border-slate-600 transform rotate-45 ${isTop ? '-bottom-2 border-t-0 border-l-0 border-b border-r' : '-top-2'}`}></div>)}
+                            <div className="flex justify-between items-center mb-2"><span className="text-[10px] uppercase tracking-wider text-blue-400 font-bold">步驟 {stepIndex + 1} / {totalSteps}</span><button onClick={onClose} className="text-slate-400 hover:text-white text-xs">跳過</button></div>
+                            <h3 className="text-lg font-bold text-white mb-2">{step.title}</h3><p className="text-slate-300 text-sm leading-relaxed mb-6">{step.content}</p>
+                            <div className="flex justify-between items-center"><div className="flex gap-1">{Array.from({length: totalSteps}).map((_, i) => (<div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === stepIndex ? 'bg-blue-500' : 'bg-slate-600'}`}></div>))}</div><div className="flex gap-2">{stepIndex > 0 && (<button onClick={onPrev} className="px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-700 text-xs font-bold border border-slate-600">上一步</button>)}<button onClick={stepIndex === totalSteps - 1 ? onClose : onNext} className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center shadow-lg shadow-blue-600/20">{stepIndex === totalSteps - 1 ? '開始使用' : '下一步'}{stepIndex !== totalSteps - 1 && <Icon name="chevron-right" className="w-3 h-3 ml-1" />}</button></div></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- NEW: Welcome Modal (First Time User) ---
+        const WelcomeModal = ({ onConfirm }) => {
+            const [name, setName] = useState('');
+            return (
+                <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+                        <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="user-circle" className="w-8 h-8 text-blue-400" /></div>
+                        <h2 className="text-2xl font-bold text-white mb-2">歡迎使用 AssetPilot</h2>
+                        <p className="text-slate-400 text-sm mb-8">首先，請問我們該如何稱呼您？</p>
+                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl p-4 text-center text-white text-lg focus:border-blue-500 outline-none mb-6 placeholder-slate-600 transition-all" placeholder="輸入您的暱稱" autoFocus onKeyDown={(e) => { if(e.key === 'Enter' && name.trim()) onConfirm(name); }} />
+                        <button onClick={() => onConfirm(name.trim() || 'User')} className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold text-lg shadow-lg shadow-blue-500/20 transition-all transform active:scale-95">開始旅程</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // ... [Calculator, AssetTrendChart, AllocationBar, CircularGoal, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
+        const Calculator = ({ initialValue, onConfirm, playSfx }) => {
             const [display, setDisplay] = useState(String(initialValue));
             const [equation, setEquation] = useState('');
-            const handleNum = (num) => { if (display === '0' && num !== '.') setDisplay(num); else setDisplay(display + num); };
-            const handleOp = (op) => { setEquation(display + ' ' + op + ' '); setDisplay('0'); };
-            const handleClear = () => { setDisplay('0'); setEquation(''); };
-            const handleEq = () => { try { const result = Function('"use strict";return (' + equation + display + ')')(); setDisplay(String(Math.round(result * 100) / 100)); setEquation(''); } catch (e) { setDisplay('Error'); } };
+            const handleNum = (num) => { playSfx('tap'); if (display === '0' && num !== '.') setDisplay(num); else setDisplay(display + num); };
+            const handleOp = (op) => { playSfx('tap'); setEquation(display + ' ' + op + ' '); setDisplay('0'); };
+            const handleClear = () => { playSfx('delete'); setDisplay('0'); setEquation(''); };
+            const handleEq = () => { try { const result = Function('"use strict";return (' + equation + display + ')')(); setDisplay(String(Math.round(result * 100) / 100)); setEquation(''); playSfx('success'); } catch (e) { setDisplay('Error'); } };
             return (
                 <div className="w-full">
                     <div className="bg-slate-900 p-4 rounded-xl mb-4 text-right"><div className="text-slate-500 text-xs h-4">{equation}</div><div className="text-3xl font-mono text-white overflow-x-auto no-scrollbar">{display}</div></div>
@@ -118,222 +226,231 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 (Updated for 5 categories) ---
         const AssetTrendChart = ({ history, timeRange, mode, customDates, isPrivacyMode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
-
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
-                    return history.filter(h => h.date >= customDates.start && h.date <= customDates.end);
-                }
-                const now = new Date();
-                let days = 365;
-                if (timeRange === '1W') days = 7;
-                if (timeRange === '1M') days = 30;
-                if (timeRange === 'YTD') days = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24)) + 1;
-                const cutoff = new Date();
-                cutoff.setDate(cutoff.getDate() - days);
+                if (timeRange === 'CUSTOM' && customDates.start && customDates.end) { return history.filter(h => h.date >= customDates.start && h.date <= customDates.end); }
+                const now = new Date(); let days = 365;
+                if (timeRange === '1W') days = 7; if (timeRange === '1M') days = 30; if (timeRange === 'YTD') days = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24)) + 1;
+                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
                 return history.filter(h => new Date(h.date) >= cutoff);
             }, [history, timeRange, customDates]);
 
             useEffect(() => {
                 if (chartInstance.current) chartInstance.current.destroy();
                 const ctx = chartRef.current.getContext('2d');
-                
-                // Color Mapping
-                let color = '#3b82f6'; // Default Blue
-                if (mode === 'cashTW') color = '#10b981'; // Emerald
-                if (mode === 'stockTW') color = '#0ea5e9'; // Sky
-                if (mode === 'cashForeign') color = '#a855f7'; // Purple
-                if (mode === 'stockForeign') color = '#ec4899'; // Pink
-
-                const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-                gradient.addColorStop(0, color + '80');
-                gradient.addColorStop(1, color + '00');
-
-                const smartFormatter = (val, index, ticks) => {
-                    let decimals = 0;
-                    if (ticks.length > 1) {
-                        const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1);
-                        if (stepSize < 10000) decimals = 1;
-                        if (stepSize < 1000) decimals = 2;
-                    }
-                    if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億';
-                    if (Math.abs(val) >= 10000) return (val / 10000).toFixed(decimals) + '萬';
-                    return val;
-                };
-
+                let color = '#3b82f6';
+                if (mode === 'cashTW') color = '#10b981'; if (mode === 'stockTW') color = '#0ea5e9'; if (mode === 'cashForeign') color = '#a855f7'; if (mode === 'stockForeign') color = '#ec4899';
+                const gradient = ctx.createLinearGradient(0, 0, 0, 300); gradient.addColorStop(0, color + '80'); gradient.addColorStop(1, color + '00');
+                const smartFormatter = (val, index, ticks) => { let decimals = 0; if (ticks.length > 1) { const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1); if (stepSize < 10000) decimals = 1; if (stepSize < 1000) decimals = 2; } if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億'; if (Math.abs(val) >= 10000) return (val / 10000).toFixed(decimals) + '萬'; return val; };
                 const shouldShowPoints = filteredData.length < 2;
-
-                chartInstance.current = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: filteredData.map(h => h.date.slice(5).replace('-', '/')),
-                        datasets: [{
-                            data: filteredData.map(h => {
-                                // Backward compatibility mapping for old history records
-                                if (mode === 'total') return h.total;
-                                if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0);
-                                if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0);
-                                if (mode === 'cashForeign') return h.cashForeign || 0; // New field
-                                if (mode === 'stockForeign') return h.stockForeign || 0; // New field
-                                return 0;
-                            }),
-                            borderColor: color,
-                            backgroundColor: gradient,
-                            borderWidth: 2,
-                            pointRadius: shouldShowPoints ? 4 : 0,
-                            pointHoverRadius: 4,
-                            fill: true,
-                            tension: 0.4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } } },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } },
-                            y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } }
-                        }
-                    }
-                });
+                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: filteredData.map(h => h.date.slice(5).replace('-', '/')), datasets: [{ data: filteredData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: shouldShowPoints ? 4 : 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [filteredData, mode]);
-
-            return <div className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
+            return <div id="chart-area" className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
         };
 
-        // --- 元件：堆疊資產條 ---
-        const AllocationBar = ({ cash, tw, us, total, isPrivacyMode }) => {
+        const AllocationBar = ({ cash, tw, us, total, isPrivacyMode, playSfx }) => {
             if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
-            const pCash = (cash / total) * 100;
-            const pTw = (tw / total) * 100;
-            const pUs = (us / total) * 100;
+            const pCash = (cash / total) * 100; const pTw = (tw / total) * 100; const pUs = (us / total) * 100;
             const [selected, setSelected] = useState(null);
-
             const displayVal = (val) => isPrivacyMode ? '****' : formatMoney(val);
-
+            const handleSelect = (type) => { playSfx('tap'); setSelected(selected === type ? null : type); };
             return (
                 <div className={`w-full transition-all duration-300 ${isPrivacyMode ? 'blur-sm' : ''}`}>
                     <div className="h-6 w-full flex rounded-full overflow-hidden cursor-pointer mb-3">
-                        <div style={{ width: `${pCash}%` }} className="bg-emerald-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('cash')}></div>
-                        <div style={{ width: `${pTw}%` }} className="bg-sky-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('tw')}></div>
-                        <div style={{ width: `${pUs}%` }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => setSelected('us')}></div>
+                        <div style={{ width: `${pCash}%` }} className="bg-emerald-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('cash')}></div>
+                        <div style={{ width: `${pTw}%` }} className="bg-sky-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('tw')}></div>
+                        <div style={{ width: `${pUs}%` }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('us')}></div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'cash' ? null : 'cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{displayVal(cash)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'tw' ? null : 'tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{displayVal(tw)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => setSelected(selected === 'us' ? null : 'us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">外資</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{displayVal(us)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{displayVal(cash)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{displayVal(tw)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">外資</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{displayVal(us)}</div>}</div>
                     </div>
                 </div>
             );
         };
 
-        // --- 元件：環狀目標進度 ---
         const CircularGoal = ({ title, current, target, onEdit, onDelete, isPrivacyMode }) => {
-            const percentage = Math.min(100, Math.max(0, (current / target) * 100));
-            const radius = 30;
-            const stroke = 4;
-            const normalizedRadius = radius - stroke * 2;
-            const circumference = normalizedRadius * 2 * Math.PI;
-            const strokeDashoffset = circumference - (percentage / 100) * circumference;
+            const percentage = Math.min(100, Math.max(0, (current / target) * 100)); const radius = 30; const stroke = 4; const normalizedRadius = radius - stroke * 2; const circumference = normalizedRadius * 2 * Math.PI; const strokeDashoffset = circumference - (percentage / 100) * circumference;
             return (
                 <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
-                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button></div>
-                    <div className="text-xs text-slate-400 mb-1">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div>
-                    <div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(current)}</div></div>
+                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button></div><div className="text-xs text-slate-400 mb-1">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div><div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(current)}</div></div>
                     <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span></div>
                 </div>
             );
         };
 
-        // --- 元件：更新結果視窗 ---
         const UpdateResultModal = ({ results, onClose, isPrivacyMode }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3>
-                            <button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button>
-                        </div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                            {results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : 
-                                results.map((item, idx) => (
-                                    <div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs">
-                                        <span className="text-slate-300 font-mono">{item.label}</span>
-                                        <span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>
-                                            {isPrivacyMode && item.label.includes('資產') ? '****' : item.value}
-                                        </span>
-                                    </div>
-                                ))
-                            }
-                        </div>
+                        <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">{results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : results.map((item, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs"><span className="text-slate-300 font-mono">{item.label}</span><span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>{isPrivacyMode && item.label.includes('資產') ? '****' : item.value}</span></div>))}</div>
                         <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
                     </div>
                 </div>
             );
         };
-
-        // --- 元件：日期區間選擇器 ---
         const DateRangeModal = ({ currentDates, onConfirm, onClose }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold text-white flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-blue-400" /> 自訂區間</h3>
-                            <button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button>
-                        </div>
-                        <div className="space-y-4">
-                            <div><label className="block text-xs text-slate-400 mb-2">開始日期</label><input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div>
-                            <div><label className="block text-xs text-slate-400 mb-2">結束日期</label><input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div>
-                        </div>
+                        <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-blue-400" /> 自訂區間</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
+                        <div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">開始日期</label><input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div><div><label className="block text-xs text-slate-400 mb-2">結束日期</label><input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div></div>
                         <button onClick={() => { const s = document.getElementById('startDate').value; const e = document.getElementById('endDate').value; if (s && e) onConfirm(s, e); }} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
                     </div>
                 </div>
             );
         };
+        const SopInputModal = ({ title, defaultValue, onConfirm, onClose }) => {
+            return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{title}</h3><button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
+                        <div className="space-y-4 mb-6"><input id="sop-modal-input" type="text" defaultValue={defaultValue} autoFocus className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none text-base" placeholder="請輸入內容..." onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(e.target.value); }} /></div>
+                        <button onClick={() => onConfirm(document.getElementById('sop-modal-input').value)} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
+                    </div>
+                </div>
+            );
+        };
 
-        // --- 元件：SOP 編輯與顯示 ---
-        const SopDetailsModal = ({ sopDetails, setSopDetails, onClose }) => {
+        const SopDetailsModal = ({ sopDetails, setSopDetails, onClose, playSfx }) => {
             const [isEditing, setIsEditing] = useState(false);
-            const addSection = () => { const title = prompt("請輸入新章節標題："); if(title) setSopDetails([...sopDetails, { title, steps: [] }]); };
-            const deleteSection = (idx) => { if(confirm("確定刪除此章節？")) setSopDetails(sopDetails.filter((_, i) => i !== idx)); };
-            const updateSectionTitle = (idx, newTitle) => { const newDetails = [...sopDetails]; newDetails[idx].title = newTitle; setSopDetails(newDetails); };
-            const addStep = (sectionIdx) => { const step = prompt("請輸入新步驟："); if(step) { const newDetails = [...sopDetails]; newDetails[sectionIdx].steps.push(step); setSopDetails(newDetails); } };
-            const deleteStep = (sectionIdx, stepIdx) => { const newDetails = [...sopDetails]; newDetails[sectionIdx].steps = newDetails[sectionIdx].steps.filter((_, i) => i !== stepIdx); setSopDetails(newDetails); };
-            const updateStep = (sectionIdx, stepIdx, newText) => { const newDetails = [...sopDetails]; newDetails[sectionIdx].steps[stepIdx] = newText; setSopDetails(newDetails); };
+            const [inputModal, setInputModal] = useState(null); // { type, sectionIdx, stepIdx, value }
+            const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); // NEW: Track delete confirmation for sections
+            const [confirmDeleteStep, setConfirmDeleteStep] = useState(null); // NEW: Track delete confirmation for steps { sIdx, stIdx }
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            const openInput = (type, sectionIdx, stepIdx, value) => {
+                playSfx('pop');
+                setInputModal({ type, sectionIdx, stepIdx, value });
+            };
+
+            const handleInputConfirm = (val) => {
+                if (!val) { setInputModal(null); return; }
+                const newDetails = [...sopDetails];
+                
+                if (inputModal.type === 'addSection') {
+                    newDetails.push({ title: val, steps: [] });
+                } else if (inputModal.type === 'editSection') {
+                    newDetails[inputModal.sectionIdx].title = val;
+                } else if (inputModal.type === 'addStep') {
+                    newDetails[inputModal.sectionIdx].steps.push(val);
+                } else if (inputModal.type === 'editStep') {
+                    newDetails[inputModal.sectionIdx].steps[inputModal.stepIdx] = val;
+                }
+                
+                setSopDetails(newDetails);
+                setInputModal(null);
+                playSfx('success');
+            };
+
+            const handleDeleteSection = (idx) => {
+                if (confirmDeleteIdx === idx) {
+                    playSfx('delete');
+                    setSopDetails(sopDetails.filter((_, i) => i !== idx));
+                    setConfirmDeleteIdx(null);
+                } else {
+                    playSfx('tap');
+                    setConfirmDeleteIdx(idx);
+                    // Auto reset after 3 seconds
+                    setTimeout(() => setConfirmDeleteIdx(null), 3000);
+                }
+            };
+
+            const handleDeleteStep = (sectionIdx, stepIdx) => {
+                // Check if we are confirming THIS specific step
+                if (confirmDeleteStep && confirmDeleteStep.sIdx === sectionIdx && confirmDeleteStep.stIdx === stepIdx) {
+                    playSfx('delete');
+                    const newDetails = [...sopDetails];
+                    newDetails[sectionIdx].steps = newDetails[sectionIdx].steps.filter((_, i) => i !== stepIdx);
+                    setSopDetails(newDetails);
+                    setConfirmDeleteStep(null);
+                } else {
+                    playSfx('tap');
+                    setConfirmDeleteStep({ sIdx: sectionIdx, stIdx: stepIdx });
+                    setTimeout(() => setConfirmDeleteStep(null), 3000);
+                }
+            };
 
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4 flex-shrink-0">
                             <h3 className="text-lg font-bold text-white flex items-center"><Icon name="book-open" className="w-5 h-5 mr-2 text-yellow-400" /> 標準操作 SOP</h3>
-                            <div className="flex items-center gap-2"><button onClick={() => setIsEditing(!isEditing)} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>{isEditing ? '完成' : '編輯'}</button><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => { playSfx('tap'); setIsEditing(!isEditing); }} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>{isEditing ? '完成' : '編輯'}</button>
+                                <button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button>
+                            </div>
                         </div>
                         <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
                             {sopDetails.length > 0 ? sopDetails.map((section, idx) => (
                                 <div key={idx} className="bg-slate-900/50 p-3 rounded-lg relative group">
-                                    {isEditing && (<button onClick={() => deleteSection(idx)} className="absolute top-2 right-2 text-red-500 opacity-50 hover:opacity-100"><Icon name="trash-2" className="w-4 h-4" /></button>)}
-                                    {isEditing ? (<input type="text" value={section.title} onChange={(e) => updateSectionTitle(idx, e.target.value)} className="bg-transparent border-b border-blue-500 text-sm font-bold text-blue-400 mb-2 w-full outline-none" />) : (<h4 className="text-sm font-bold text-blue-400 mb-2">{section.title}</h4>)}
+                                    {isEditing && (
+                                        <button 
+                                            onClick={() => handleDeleteSection(idx)} 
+                                            className={`absolute top-2 right-2 p-1 transition-colors ${confirmDeleteIdx === idx ? 'text-red-500 bg-red-500/10 rounded font-bold text-xs' : 'text-slate-500 opacity-50 hover:opacity-100 hover:text-red-400'}`}
+                                        >
+                                            {confirmDeleteIdx === idx ? '確定?' : <Icon name="trash-2" className="w-4 h-4" />}
+                                        </button>
+                                    )}
+                                    <div 
+                                        onClick={() => isEditing && openInput('editSection', idx, null, section.title)}
+                                        className={`text-sm font-bold mb-2 flex items-center ${isEditing ? 'text-blue-300 cursor-pointer hover:bg-white/5 p-1 rounded' : 'text-blue-400'}`}
+                                    >
+                                        {section.title}
+                                        {isEditing && <Icon name="edit-2" className="w-3 h-3 ml-2 opacity-50" />}
+                                    </div>
                                     <ul className="list-disc list-inside text-xs text-slate-300 space-y-1">
-                                        {section.steps.map((step, sIdx) => (<li key={sIdx} className="flex items-center justify-between group/step">{isEditing ? (<input type="text" value={step} onChange={(e) => updateStep(idx, sIdx, e.target.value)} className="bg-transparent border-b border-slate-600 w-full outline-none" />) : (<span>{step}</span>)}{isEditing && (<button onClick={() => deleteStep(idx, sIdx)} className="ml-2 text-red-400"><Icon name="minus-circle" className="w-3 h-3" /></button>)}</li>))}
-                                        {isEditing && (<li className="list-none pt-2"><button onClick={() => addStep(idx)} className="text-xs text-emerald-400 flex items-center"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增步驟</button></li>)}
+                                        {section.steps.map((step, sIdx) => (
+                                            <li key={sIdx} className="flex items-center justify-between group/step py-1">
+                                                <span 
+                                                    onClick={() => isEditing && openInput('editStep', idx, sIdx, step)}
+                                                    className={`flex-1 ${isEditing ? 'cursor-pointer hover:text-white border-b border-dashed border-slate-600 pb-0.5' : ''}`}
+                                                >
+                                                    {step}
+                                                </span>
+                                                {isEditing && (
+                                                    <button 
+                                                        onClick={() => handleDeleteStep(idx, sIdx)} 
+                                                        className={`ml-2 p-1 transition-colors ${confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? 'text-red-500 font-bold text-[10px]' : 'text-red-400 opacity-50 hover:opacity-100'}`}
+                                                    >
+                                                        {confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? '刪除?' : <Icon name="minus-circle" className="w-3 h-3" />}
+                                                    </button>
+                                                )}
+                                            </li>
+                                        ))}
+                                        {isEditing && (<li className="list-none pt-2"><button onClick={() => openInput('addStep', idx)} className="text-xs text-emerald-400 flex items-center p-1 hover:bg-white/5 rounded"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增步驟</button></li>)}
                                     </ul>
                                 </div>
                             )) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明</div>}
-                            {isEditing && (<button onClick={addSection} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">+ 新增章節</button>)}
+                            {isEditing && (<button onClick={() => openInput('addSection')} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">+ 新增章節</button>)}
                         </div>
+
+                        {/* SOP Input Modal */}
+                        {inputModal && (
+                            <SopInputModal 
+                                title={
+                                    inputModal.type === 'addSection' ? '新增章節' : 
+                                    inputModal.type === 'editSection' ? '編輯章節' : 
+                                    inputModal.type === 'addStep' ? '新增步驟' : '編輯步驟'
+                                }
+                                defaultValue={inputModal.value || ''}
+                                onConfirm={handleInputConfirm}
+                                onClose={() => { playSfx('pop'); setInputModal(null); }}
+                            />
+                        )}
                     </div>
                 </div>
             );
         };
-
-        const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
-        const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(amount);
 
         // --- 主程式 ---
         const App = () => {
@@ -379,6 +496,23 @@
                 return saved ? JSON.parse(saved) : ['cashTW', 'cashForeign', 'stockForeign', 'stockTW'];
             });
 
+            const [userName, setUserName] = useState(() => localStorage.getItem('ap_user_name') || 'User');
+            
+            // Sound State
+            const [soundEnabled, setSoundEnabled] = useState(() => {
+                const saved = localStorage.getItem('ap_sound_enabled');
+                return saved !== null ? JSON.parse(saved) : true;
+            });
+
+            // New State for Welcome Modal
+            const [showWelcome, setShowWelcome] = useState(false);
+
+            const [toast, setToast] = useState({ show: false, message: '' });
+
+            // Tutorial State
+            const [showTutorial, setShowTutorial] = useState(false);
+            const [tutorialStep, setTutorialStep] = useState(0);
+
             const [isPrivacyMode, setIsPrivacyMode] = useState(false); 
             
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -397,6 +531,27 @@
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
 
+            // New State for SOP Input Modal (Dashboard)
+            const [sopTaskInput, setSopTaskInput] = useState(null); // { id: null | id, text: string }
+
+            // Tutorial Init Logic - Modified for Welcome Flow
+            useEffect(() => {
+                const seen = localStorage.getItem('ap_tutorial_seen');
+                if (!seen) {
+                    setShowWelcome(true); // Show Welcome first
+                }
+            }, []);
+
+            // Tutorial Tab Switcher Logic
+            useEffect(() => {
+                if (showTutorial) {
+                    const step = TUTORIAL_STEPS[tutorialStep];
+                    if (step.tab && step.tab !== activeTab) {
+                        setActiveTab(step.tab);
+                    }
+                }
+            }, [showTutorial, tutorialStep]);
+
             // Persist Data
             useEffect(() => { localStorage.setItem('ap_cash', JSON.stringify(cash)); }, [cash]);
             useEffect(() => { localStorage.setItem('ap_tw_stocks', JSON.stringify(twStocks)); }, [twStocks]);
@@ -408,10 +563,38 @@
             useEffect(() => { localStorage.setItem('ap_rates_map', JSON.stringify(rates)); }, [rates]);
             useEffect(() => { localStorage.setItem('ap_history_v3', JSON.stringify(history)); }, [history]);
             useEffect(() => { localStorage.setItem('ap_wallet_order', JSON.stringify(walletOrder)); }, [walletOrder]);
+            useEffect(() => { localStorage.setItem('ap_user_name', userName); }, [userName]);
+            useEffect(() => { localStorage.setItem('ap_sound_enabled', JSON.stringify(soundEnabled)); }, [soundEnabled]);
             
             useEffect(() => { 
                 if (window.lucide) window.lucide.createIcons(); 
             });
+
+            // Helper to show toast
+            const triggerToast = (message) => {
+                setToast({ show: true, message });
+                setTimeout(() => setToast({ show: false, message: '' }), 3000);
+            };
+            
+            // Helper for sound
+            const playSfx = (type) => {
+                if (soundEnabled) SoundEngine.play(type);
+            };
+
+            const handleWelcomeConfirm = (name) => {
+                setUserName(name);
+                localStorage.setItem('ap_user_name', name);
+                playSfx('success');
+                setShowWelcome(false);
+                setTimeout(() => {
+                    setShowTutorial(true); // Start tutorial after welcome
+                }, 500);
+            };
+
+            const handleTutorialNext = () => { playSfx('tap'); if (tutorialStep < TUTORIAL_STEPS.length - 1) { setTutorialStep(prev => prev + 1); } else { handleTutorialClose(); } };
+            const handleTutorialPrev = () => { playSfx('tap'); if (tutorialStep > 0) setTutorialStep(prev => prev - 1); };
+            const handleTutorialClose = () => { playSfx('success'); setShowTutorial(false); setTutorialStep(0); setActiveTab('dashboard'); localStorage.setItem('ap_tutorial_seen', 'true'); triggerToast("導覽完成！開始探索吧"); };
+            const replayTutorial = () => { playSfx('tap'); setShowTutorial(true); setTutorialStep(0); setShowSettings(false); };
 
             // Calculations
             const totalCashTWD = useMemo(() => cash.reduce((acc, curr) => acc + (curr.balance || 0), 0), [cash]);
@@ -505,6 +688,7 @@
             // API Logic
             const fetchLiveData = async () => {
                 setIsUpdating(true);
+                playSfx('tap');
                 const reportLogs = [];
                 const oldNetWorth = totalNetWorth;
                 
@@ -567,6 +751,8 @@
 
                     setLastUpdate(new Date().toLocaleTimeString());
                     setUpdateResults(reportLogs); 
+                    triggerToast('即時報價更新完成');
+                    playSfx('success');
 
                 } catch (error) { 
                     console.error(error);
@@ -576,110 +762,60 @@
             };
 
             // Backup & Restore
-            const exportData = () => { const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v17.10_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
-            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); alert('還原成功！'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v19.7_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
-            const openEditItem = (itemData) => { setDeleteConfirm(false); setEditItem(itemData); };
+            const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
 
-            // Handlers
-            const performDelete = (id, type) => { 
-                if (!id) return;
-                if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); 
-                else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); 
-                else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); 
-                else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); 
-                setEditItem(null); 
-            };
+            const performDelete = (id, type) => { if (!id) return; if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); setEditItem(null); playSfx('delete'); triggerToast('刪除成功'); };
             
-            // Updated to handle Note (v5)
-            const handleAddItem = async (type, v1, v2, v3, v4, v5) => { 
-                const id=Math.random().toString(36).substr(2,9); 
+            const handleAddItem = async (type, v1, v2, v3, v4, v5) => { const id=Math.random().toString(36).substr(2,9); if (type==='cash') { setCash([...cash,{id,name:v1,balance:parseFloat(v2)||0, note: v5, locked:false}]); setAddItemType(null); } else if (type === 'cashForeign') { setForeignCash([...foreignCash, {id, name: v1, balance: parseFloat(v2)||0, currency: v3 || 'USD', note: v5}]); setAddItemType(null); } else { let ticker = v1.toUpperCase(); if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW'; const name = v2 || ticker; const shares = parseFloat(v3)||0; const currency = v4 || (type === 'stockTW' ? 'TWD' : 'USD'); const note = v5; const newItem = {id, ticker, name, shares, price: 0, currency, note}; if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); setAddItemType(null); if (!v2) { try { const { price, name: fetchedName } = await fetchYahooData(ticker); const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: fetchedName || item.name, price: price || 0 }; } return item; })); } catch (e) { console.error("Auto-fetch name failed", e); } } } playSfx('success'); triggerToast('新增成功'); };
+
+            const handleUpdateValue = (id, type, val, newName, newNote) => { const num = parseFloat(val); const updater = (item) => { if (item.id !== id) return item; let updated = { ...item }; if (type.includes('cash')) updated.balance = num; else updated.shares = num; if (newName !== undefined) updated.name = newName; if (newNote !== undefined) updated.note = newNote; return updated; }; if(type==='cash') setCash(p => p.map(updater)); else if(type==='cashForeign') setForeignCash(p => p.map(updater)); else if(type==='stockTW') setTwStocks(p => p.map(updater)); else setForeignStocks(p => p.map(updater)); setEditItem(null); playSfx('success'); triggerToast('更新成功'); };
+
+            const toggleSop = (id) => { playSfx('tap'); setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
+            const deleteSop=(id)=> { playSfx('delete'); setSopList(p=>p.filter(s=>s.id!==id)); };
+            
+            // Updated addSop and editSopText to use modal state
+            const addSop = () => { 
+                playSfx('pop'); 
+                setSopTaskInput({ id: null, text: '' });
+            };
+            const editSopText = (id, text) => { 
+                playSfx('pop'); 
+                setSopTaskInput({ id, text });
+            };
+
+            const handleSaveSopTask = (text) => {
+                if (text.trim() === '') return;
                 
-                if (type==='cash') {
-                    // v1=name, v2=balance, v5=note
-                    setCash([...cash,{id,name:v1,balance:parseFloat(v2)||0, note: v5, locked:false}]);
-                    setAddItemType(null);
-                } else if (type === 'cashForeign') {
-                    // v1=name, v2=balance, v3=currency, v5=note
-                    setForeignCash([...foreignCash, {id, name: v1, balance: parseFloat(v2)||0, currency: v3 || 'USD', note: v5}]);
-                    setAddItemType(null);
+                if (sopTaskInput.id) {
+                    setSopList(prev => prev.map(s => s.id === sopTaskInput.id ? { ...s, text } : s));
+                    triggerToast('任務已更新');
                 } else {
-                    // Stock Logic
-                    let ticker = v1.toUpperCase();
-                    if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW';
-                    
-                    const name = v2 || ticker;
-                    const shares = parseFloat(v3)||0;
-                    const currency = v4 || (type === 'stockTW' ? 'TWD' : 'USD');
-                    const note = v5;
-                    const newItem = {id, ticker, name, shares, price: 0, currency, note};
-                    
-                    if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]);
-                    else setForeignStocks(prev => [...prev, newItem]);
-                    
-                    setAddItemType(null); 
-                    
-                    if (!v2) {
-                        try {
-                            const { price, name: fetchedName } = await fetchYahooData(ticker);
-                            const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks;
-                            updateFunc(prev => prev.map(item => {
-                                if (item.id === id) {
-                                    return { ...item, name: fetchedName || item.name, price: price || 0 };
-                                }
-                                return item;
-                            }));
-                        } catch (e) { console.error("Auto-fetch name failed", e); }
-                    }
+                    setSopList([...sopList, { id: Date.now(), text, completed: false }]);
+                    triggerToast('任務已新增');
                 }
+                setSopTaskInput(null);
+                playSfx('success');
             };
 
-            const handleUpdateValue = (id, type, val, newName, newNote) => { 
-                const num = parseFloat(val); 
-                const updater = (item) => {
-                    if (item.id !== id) return item;
-                    let updated = { ...item };
-                    if (type.includes('cash')) updated.balance = num; else updated.shares = num;
-                    if (newName !== undefined) updated.name = newName;
-                    if (newNote !== undefined) updated.note = newNote;
-                    return updated;
-                };
-                if(type==='cash') setCash(p => p.map(updater));
-                else if(type==='cashForeign') setForeignCash(p => p.map(updater));
-                else if(type==='stockTW') setTwStocks(p => p.map(updater));
-                else setForeignStocks(p => p.map(updater));
-                setEditItem(null); 
-            };
-
-            const toggleSop = (id) => { setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
-            const deleteSop=(id)=>setSopList(p=>p.filter(s=>s.id!==id));
-            const addSop=()=>{const t=prompt("任務內容：");if(t)setSopList([...sopList,{id:Date.now(),text:t,completed:false}])};
-            const editSopText=(id,ot)=>{const nt=prompt("修改：",ot);if(nt)setSopList(p=>p.map(s=>s.id===id?{...s,text:nt}:s))};
-            const handleAddGoal = (title, target) => setGoals([...goals, { id: Date.now(), title, target: parseFloat(target) }]);
-            const handleUpdateGoal = (id, title, target) => { setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target) } : g)); setEditGoal(null); };
-            const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) setGoals(prev => prev.filter(g => g.id !== id)); };
+            const handleAddGoal = (title, target) => { playSfx('success'); setGoals([...goals, { id: Date.now(), title, target: parseFloat(target) }]); };
+            const handleUpdateGoal = (id, title, target) => { playSfx('success'); setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target) } : g)); setEditGoal(null); };
+            const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) { playSfx('delete'); setGoals(prev => prev.filter(g => g.id !== id)); } };
 
             const updateRate = (cur, val) => setRates(prev => ({...prev, [cur]: parseFloat(val)}));
             const deleteRate = (cur) => { if(cur==='USD') return; const newR = {...rates}; delete newR[cur]; setRates(newR); };
-
-            // Reorder Handler
-            const moveSection = (index, direction) => {
-                const newOrder = [...walletOrder];
-                if (direction === 'up' && index > 0) {
-                    [newOrder[index], newOrder[index - 1]] = [newOrder[index - 1], newOrder[index]];
-                } else if (direction === 'down' && index < newOrder.length - 1) {
-                    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-                }
-                setWalletOrder(newOrder);
-            };
+            const moveSection = (index, direction) => { playSfx('tap'); const newOrder = [...walletOrder]; if (direction === 'up' && index > 0) { [newOrder[index], newOrder[index - 1]] = [newOrder[index - 1], newOrder[index]]; } else if (direction === 'down' && index < newOrder.length - 1) { [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]; } setWalletOrder(newOrder); };
 
             const TabButton = ({ id, label, icon }) => (
-                <button onClick={() => setActiveTab(id)} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Icon name={icon} className="w-5 h-5 mb-1" />{label}
                 </button>
             );
 
-            // Render Functions for Wallet Sections
+            // ... Render Sections ... (Omitting full renderSection code for brevity, assumes logic is same just passing playSfx if needed, but not strictly needed inside renderSection as handlers are defined)
+            // Need to make sure openEditItem etc call playSfx. They do.
             const renderSection = (type, index) => {
                 if (type === 'cashTW') {
                     return (
@@ -688,9 +824,11 @@
                                 <span className="text-sm font-bold text-emerald-400 flex items-center"><Icon name="wallet" className="w-4 h-4 mr-2" /> 台幣現金</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalCashTWD)}</span>
-                                    <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
-                                    <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
-                                    <button onClick={() => setAddItemType('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button>
+                                    <div id="wallet-reorder-btns-cashTW" className="flex">
+                                        <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
+                                        <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
+                                    </div>
+                                    <button id="wallet-add-cash" onClick={() => { playSfx('pop'); setAddItemType('cash'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
                             {cash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.note || (item.locked ? '🔒 封存' : '🟢 活存')}</div></div><div className="text-sm font-mono text-emerald-400">{displayMoney(item.balance)}</div></div>))}
@@ -704,12 +842,14 @@
                                 <span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span>
-                                    <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
-                                    <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
-                                    <button onClick={() => setAddItemType('cashForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button>
+                                    <div className="flex">
+                                        <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
+                                        <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
+                                    </div>
+                                    <button onClick={() => { playSfx('pop'); setAddItemType('cashForeign'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
-                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="flex items-center gap-2"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30">{item.currency}</div><div><div className="text-sm text-slate-200">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div></div><div className="text-right"><div className="text-sm font-mono text-purple-300">{displayForeign(item.balance, item.currency)}</div><div className="text-[10px] text-slate-500">≈ {displayMoney(item.balance * (rates[item.currency] || 1))}</div></div></div>))}
+                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="flex items-center gap-2"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30">{item.currency}</div><div><div className="text-sm text-slate-200">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div></div><div className="text-right"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500">≈ {displayMoney(item.balance * (rates[item.currency] || 1))}</div></div></div>))}
                         </div>
                     );
                 }
@@ -720,12 +860,14 @@
                                 <span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span>
-                                    <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
-                                    <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
-                                    <button onClick={() => setAddItemType('stockForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button>
+                                    <div className="flex">
+                                        <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
+                                        <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
+                                    </div>
+                                    <button onClick={() => { playSfx('pop'); setAddItemType('stockForeign'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
-                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}
+                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -736,9 +878,11 @@
                                 <span className="text-sm font-bold text-sky-400 flex items-center"><Icon name="trending-up" className="w-4 h-4 mr-2" /> 台股現貨</span>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalTwStocksTWD)}</span>
-                                    <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
-                                    <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
-                                    <button onClick={() => setAddItemType('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button>
+                                    <div className="flex">
+                                        <button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button>
+                                        <button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button>
+                                    </div>
+                                    <button onClick={() => { playSfx('pop'); setAddItemType('stockTW'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
                             {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}
@@ -752,67 +896,66 @@
                     {/* Header */}
                     <header className="px-6 py-4 pb-2 sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 border-b border-slate-800/50">
                         <div className="flex justify-between items-center mb-2">
-                            <h1 className="text-slate-400 text-xs font-bold tracking-widest uppercase flex items-center">
-                                <Icon name="shield-check" className="w-3 h-3 mr-1 text-emerald-500" />AssetPilot
+                            <h1 className="text-slate-200 text-sm font-bold tracking-wide flex items-center font-sans">
+                                <Icon name="shield-check" className="w-4 h-4 mr-2 text-emerald-500" />AssetPilot
+                                <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setIsPrivacyMode(!isPrivacyMode)} className={`text-slate-400 hover:text-white transition-colors`}>
+                                <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}>
                                     <Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" />
                                 </button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
-                                <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
+                                <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
                             </div>
                         </div>
                         <div className="flex justify-between items-end">
                             <div className="text-4xl font-bold text-white tracking-tight font-mono text-gradient">
                                 {displayMoney(totalNetWorth)}
                             </div>
-                            <button onClick={fetchLiveData} disabled={isUpdating} className={`mb-2 p-2 rounded-full bg-slate-800 border border-slate-700 text-blue-400 active:scale-95 transition-all ${isUpdating ? 'opacity-50' : ''}`}><Icon name="refresh-cw" className={`w-5 h-5 ${isUpdating ? 'animate-spin' : ''}`} /></button>
+                            <button id="header-refresh" onClick={fetchLiveData} disabled={isUpdating} className={`mb-2 p-2 rounded-full bg-slate-800 border border-slate-700 text-blue-400 active:scale-95 transition-all ${isUpdating ? 'opacity-50' : ''}`}><Icon name="refresh-cw" className={`w-5 h-5 ${isUpdating ? 'animate-spin' : ''}`} /></button>
                         </div>
                     </header>
 
-                    {/* Rates Ticker (Smart Filtered) */}
-                    <div className="px-6 pt-2 pb-0 flex overflow-x-auto no-scrollbar gap-2">
-                        {Object.entries(rates)
-                            .filter(([cur]) => activeCurrencies.includes(cur))
-                            .map(([cur, rate]) => (
-                                <div key={cur} className="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 flex items-center gap-2 whitespace-nowrap">
-                                    <span className="text-[10px] text-slate-400 uppercase tracking-wider">{cur}</span>
-                                    <span className="text-xs font-bold text-emerald-400 font-mono">{rate.toFixed(2)}</span>
-                                </div>
+                    {/* Rates Ticker */}
+                    <div id="ticker-rates" className="px-6 pt-2 pb-0 flex overflow-x-auto no-scrollbar gap-2">
+                        {Object.entries(rates).filter(([cur]) => activeCurrencies.includes(cur)).map(([cur, rate]) => (
+                            <div key={cur} className="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 flex items-center gap-2 whitespace-nowrap">
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider">{cur}</span>
+                                <span className="text-xs font-bold text-emerald-400 font-mono">{rate.toFixed(2)}</span>
+                            </div>
                         ))}
                     </div>
 
                     {/* Dashboard */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
-                            <div className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
+                            <div id="chart-area" className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-xs text-slate-400 font-bold uppercase">資產趨勢</h3>
-                                    <div className="flex bg-slate-800 rounded-lg p-0.5">
+                                    <div id="chart-controls" className="flex bg-slate-800 rounded-lg p-0.5">
                                         {['1W', '1M', 'YTD', 'ALL'].map(r => (
-                                            <button key={r} onClick={() => { setTimeRange(r); setCustomDates({start:'', end:''}); }} className={`px-2 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r}</button>
+                                            <button key={r} onClick={() => { playSfx('tap'); setTimeRange(r); setCustomDates({start:'', end:''}); }} className={`px-2 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r}</button>
                                         ))}
-                                        <button onClick={() => setShowDateModal(true)} className={`px-2 py-0.5 text-[10px] rounded flex items-center justify-center ${timeRange === 'CUSTOM' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
+                                        <button onClick={() => { playSfx('pop'); setShowDateModal(true); }} className={`px-2 py-0.5 text-[10px] rounded flex items-center justify-center ${timeRange === 'CUSTOM' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
                                             <Icon name="calendar" className="w-3 h-3" />
                                         </button>
                                     </div>
                                 </div>
                                 <div className="flex space-x-4 mb-4 overflow-x-auto pb-1 no-scrollbar">
                                     {[{id:'total',l:'總資產'},{id:'cashTW',l:'台幣資金'},{id:'stockTW',l:'台股部位'},{id:'cashForeign',l:'外幣資金'},{id:'stockForeign',l:'海外投資'}].map(m => (
-                                        <button key={m.id} onClick={() => setTrendMode(m.id)} className={`text-xs font-bold whitespace-nowrap pb-1 border-b-2 transition-colors ${trendMode === m.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500'}`}>{m.l}</button>
+                                        <button key={m.id} onClick={() => { playSfx('tap'); setTrendMode(m.id); }} className={`text-xs font-bold whitespace-nowrap pb-1 border-b-2 transition-colors ${trendMode === m.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500'}`}>{m.l}</button>
                                     ))}
                                 </div>
                                 <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} customDates={customDates} isPrivacyMode={isPrivacyMode} />
                             </div>
-                            <div className="glass-panel rounded-xl p-4">
+                            <div id="allocation-section" className="glass-panel rounded-xl p-4">
                                 <h3 className="text-xs text-slate-400 font-bold uppercase mb-4">資產配置</h3>
-                                <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalForeignAssetsTWD} total={totalNetWorth} isPrivacyMode={isPrivacyMode} />
+                                <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalForeignAssetsTWD} total={totalNetWorth} isPrivacyMode={isPrivacyMode} playSfx={playSfx} />
                             </div>
-                            <div className="glass-panel rounded-xl p-4">
+                            <div id="sop-section" className="glass-panel rounded-xl p-4">
                                 <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-2"><h3 className="text-xs text-slate-400 uppercase tracking-wider font-bold">Monthly Action</h3><button onClick={() => setShowSopModal(true)} className="text-slate-500 hover:text-yellow-400"><Icon name="lightbulb" className="w-4 h-4" /></button></div>
-                                    <button onClick={() => setSopEditMode(!sopEditMode)} className="text-xs text-blue-400">{sopEditMode ? '完成' : '編輯'}</button>
+                                    <div className="flex items-center gap-2"><h3 className="text-xs text-slate-400 uppercase tracking-wider font-bold">每月任務</h3><button onClick={() => { playSfx('pop'); setShowSopModal(true); }} className="text-slate-500 hover:text-yellow-400"><Icon name="lightbulb" className="w-4 h-4" /></button></div>
+                                    <button onClick={() => { playSfx('tap'); setSopEditMode(!sopEditMode); }} className="text-xs text-blue-400">{sopEditMode ? '完成' : '編輯'}</button>
                                 </div>
                                 <div className="space-y-2">
                                     {sopList.length > 0 ? sopList.map(sop => (<div key={sop.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50"><div className="flex items-center text-sm text-slate-300 flex-1 cursor-pointer" onClick={() => !sopEditMode && toggleSop(sop.id)}><div className={`w-5 h-5 rounded border mr-3 flex items-center justify-center transition-colors ${sop.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>{sop.completed && (<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>)}</div><span className={`${sop.completed ? 'line-through text-slate-600' : ''} ${sopEditMode ? 'underline decoration-dashed decoration-slate-600' : ''}`} onClick={(e) => { if (sopEditMode) { e.stopPropagation(); editSopText(sop.id, sop.text); }}}>{sop.text}</span></div>{sopEditMode && <button onClick={() => deleteSop(sop.id)} className="ml-2 text-red-500"><Icon name="trash-2" className="w-4 h-4" /></button>}</div>)) : <div className="text-xs text-slate-500 text-center py-2">無待辦事項</div>}
@@ -822,12 +965,10 @@
                         </div>
                     )}
 
-                    {/* Tab 2: Wallet */}
+                    {/* Tab 2: Wallet & Tab 3: Analysis (Render logic same as before, using renderSection) */}
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
-                            
-                            {/* Render Ordered Sections */}
                             {walletOrder.map((type, index) => renderSection(type, index))}
                         </div>
                     )}
@@ -835,48 +976,124 @@
                     {/* Tab 3: Analysis */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
-                            <div><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button onClick={() => setEditGoal({ id: null })} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => setEditGoal(g)} onDelete={() => handleDeleteGoal(g.id)} isPrivacyMode={isPrivacyMode} />))}</div></div>
+                            <div id="goal-section"><div className="flex justify-between items-center mb-3"><h3 className="text-xs text-slate-400 font-bold uppercase">財務目標</h3><button id="goal-add-btn" onClick={() => { playSfx('pop'); setEditGoal({ id: null }); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增</button></div><div className="space-y-3">{goals.map(g => (<CircularGoal key={g.id} title={g.title} target={g.target} current={totalNetWorth} onEdit={() => { playSfx('pop'); setEditGoal(g); }} onDelete={() => handleDeleteGoal(g.id)} isPrivacyMode={isPrivacyMode} />))}</div></div>
                             <div><h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3><div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500"><h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3><div className="text-2xl font-bold text-white mb-2">{history.length > 0 ? (isPrivacyMode ? '****' : formatMoney(history[history.length-1].total - history[0].total)) : '$0'}<span className="text-sm font-normal text-emerald-400 ml-2">{history.length > 0 ? ((history[history.length-1].total - history[0].total) / history[0].total * 100).toFixed(2) : '0'}%</span></div><div className="text-xs text-slate-500">累積盈虧 (YTD)</div></div><div className="space-y-3">{monthlyReportData.map((report, idx) => { const prevMonth = monthlyReportData[idx + 1]; const diff = prevMonth ? report.total - prevMonth.total : 0; const diffPercent = prevMonth ? (diff / prevMonth.total * 100).toFixed(2) : 0; return (<div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center"><div><div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div><div className="text-xs text-slate-500">結算日: {report.date}</div></div><div className="text-right"><div className="text-sm font-mono text-white">{displayMoney(report.total)}</div><div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}{displayMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)</div></div></div>); })}</div></div>
                         </div>
                     )}
 
                     {/* Navigation */}
-                    <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex justify-around pb-safe-area-bottom z-50 h-20 items-start pt-3">
+                    <nav id="main-nav" className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 flex justify-around pb-safe-area-bottom z-50 h-20 items-start pt-3">
                         <TabButton id="dashboard" label="戰情室" icon="layout-dashboard" />
                         <TabButton id="wallet" label="金庫" icon="wallet" />
                         <TabButton id="analysis" label="分析" icon="pie-chart" />
                     </nav>
 
+                    {/* Toast */}
+                    <Toast message={toast.message} show={toast.show} />
+
+                    {/* Welcome Modal */}
+                    {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
+
+                    {/* Tutorial Modal */}
+                    {showTutorial && (
+                        <TutorialSpotlight 
+                            stepIndex={tutorialStep} 
+                            totalSteps={TUTORIAL_STEPS.length} 
+                            onNext={handleTutorialNext} 
+                            onPrev={handleTutorialPrev}
+                            onClose={handleTutorialClose} 
+                        />
+                    )}
+
+                    {/* SOP Input Modal (Dashboard) */}
+                    {sopTaskInput && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => setSopTaskInput(null)}>
+                            <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-lg font-bold text-white flex items-center">
+                                        {sopTaskInput.id ? '編輯任務' : '新增任務'}
+                                    </h3>
+                                    <button onClick={() => setSopTaskInput(null)} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button>
+                                </div>
+                                <div className="space-y-4 mb-6">
+                                    <input 
+                                        id="sopTaskInput"
+                                        type="text" 
+                                        defaultValue={sopTaskInput.text}
+                                        autoFocus
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none text-base"
+                                        placeholder="輸入任務內容..."
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                handleSaveSopTask(e.target.value);
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <button 
+                                    onClick={() => handleSaveSopTask(document.getElementById('sopTaskInput').value)} 
+                                    className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg"
+                                >
+                                    確認
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Modals */}
                     {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} isPrivacyMode={isPrivacyMode} />}
                     {showSettings && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => setShowSettings(false)}>
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => { playSfx('pop'); setShowSettings(false); }}>
                             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-lg font-bold text-white flex items-center"><Icon name="settings" className="w-5 h-5 mr-2" /> 設定</h3>
-                                    <button onClick={() => setShowSettings(false)} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button>
+                                    <button onClick={() => { playSfx('pop'); setShowSettings(false); }} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button>
                                 </div>
                                 <div className="space-y-4 overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar">
+                                    {/* User Name */}
                                     <div>
-                                        <label className="block text-xs text-slate-400 mb-2">多幣別匯率設定 (對 TWD)</label>
-                                        <div className="space-y-2">
-                                            {Object.entries(rates).map(([cur, rate]) => (
-                                                <div key={cur} className="flex items-center gap-2">
-                                                    <span className="text-xs text-slate-300 w-10 font-mono">{cur}</span>
-                                                    <input type="number" step="0.01" value={rate} onChange={(e) => updateRate(cur, e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 flex-1 text-white font-mono text-sm outline-none"/>
-                                                    {cur !== 'USD' && <button onClick={() => deleteRate(cur)} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-4 h-4" /></button>}
-                                                </div>
-                                            ))}
-                                            <div className="flex gap-2 pt-2">
-                                                <select id="newCurCode" className="bg-slate-900 border border-slate-600 rounded p-2 w-24 text-white font-mono text-xs uppercase outline-none">
-                                                    {CURRENCY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                                                </select>
-                                                <input id="newCurRate" type="number" placeholder="匯率" className="bg-slate-900 border border-slate-600 rounded p-2 flex-1 text-white font-mono text-xs outline-none"/>
-                                                <button onClick={() => {const c=document.getElementById('newCurCode').value.toUpperCase(); const r=document.getElementById('newCurRate').value; if(c&&r) updateRate(c,r);}} className="p-2 bg-blue-600/30 text-blue-400 rounded"><Icon name="plus" className="w-4 h-4" /></button>
-                                            </div>
+                                        <label className="block text-xs text-slate-400 mb-2">使用者名稱</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={userName} 
+                                                onChange={(e) => setUserName(e.target.value)} 
+                                                className="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full text-white focus:border-blue-500 outline-none placeholder-slate-600"
+                                                placeholder="請輸入您的暱稱"
+                                            />
+                                            <button 
+                                                onClick={() => {
+                                                    playSfx('success');
+                                                    triggerToast('使用者名稱已更新');
+                                                    setShowSettings(false);
+                                                }} 
+                                                className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-bold text-sm whitespace-nowrap transition-colors"
+                                            >
+                                                儲存
+                                            </button>
                                         </div>
                                     </div>
                                     
+                                    {/* Sound Toggle */}
+                                    <div className="flex justify-between items-center py-2 border-t border-slate-700 mt-2">
+                                        <label className="text-xs text-slate-400 flex items-center gap-2"><Icon name="volume-2" className="w-4 h-4" /> 音效回饋</label>
+                                        <button 
+                                            onClick={() => { 
+                                                const newState = !soundEnabled;
+                                                setSoundEnabled(newState); 
+                                                if (newState) {
+                                                    // Immediately play sound if enabling
+                                                    SoundEngine.init(); // Ensure context is ready
+                                                    SoundEngine.play('switch');
+                                                }
+                                            }}
+                                            className={`w-10 h-5 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-600' : 'bg-slate-600'}`}
+                                        >
+                                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-transform ${soundEnabled ? 'left-6' : 'left-1'}`}></div>
+                                        </button>
+                                    </div>
+
+                                    {/* Backup & Restore */}
                                     <div className="pt-2 border-t border-slate-700">
                                         <label className="block text-xs text-slate-400 mb-2">資料備份/還原</label>
                                         <div className="flex gap-2">
@@ -887,21 +1104,27 @@
                                             </label>
                                         </div>
                                     </div>
+
+                                    {/* Replay Tutorial Button */}
+                                    <div className="pt-2 border-t border-slate-700">
+                                        <button onClick={replayTutorial} className="w-full py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors flex items-center justify-center gap-2">
+                                            <Icon name="help-circle" className="w-3 h-3" /> 重播新手教學導覽
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v17.10</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v19.7</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
                         </div>
                     )}
-                    {showSopModal && <SopDetailsModal sopDetails={sopDetails} setSopDetails={setSopDetails} onClose={() => setShowSopModal(false)} />}
-                    {showDateModal && (<DateRangeModal currentDates={customDates} onConfirm={(s, e) => { setCustomDates({ start: s, end: e }); setTimeRange('CUSTOM'); setShowDateModal(false); }} onClose={() => setShowDateModal(false)} />)}
+                    {showSopModal && <SopDetailsModal sopDetails={sopDetails} setSopDetails={setSopDetails} onClose={() => { playSfx('pop'); setShowSopModal(false); }} playSfx={playSfx} />}
+                    {showDateModal && (<DateRangeModal currentDates={customDates} onConfirm={(s, e) => { playSfx('success'); setCustomDates({ start: s, end: e }); setTimeRange('CUSTOM'); setShowDateModal(false); }} onClose={() => { playSfx('pop'); setShowDateModal(false); }} />)}
                     
                     {/* Add Item Modal */}
-                    {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => setAddItemType(null)} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
+                    {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
                     <div className="space-y-4 mb-6">
-                        {/* Currency Select for Foreign Items */}
                         {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
                             <div><label className="text-xs text-slate-400 mb-1 block">幣別</label>
                             <select id="addCur" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none">
@@ -914,107 +1137,50 @@
                         <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input id="addNote" type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
                     </div>
                     <button onClick={() => {
+                        playSfx('tap');
                         const name = document.getElementById('addMain').value; 
                         const val = document.getElementById('addVal').value; 
                         const sub = document.getElementById('addSub') ? document.getElementById('addSub').value : ''; 
                         const cur = document.getElementById('addCur') ? document.getElementById('addCur').value : null;
-                        const note = document.getElementById('addNote').value; // Get note
-                        
+                        const note = document.getElementById('addNote').value;
                         if (name && val) {
-                            if (addItemType.includes('cash')) {
-                                handleAddItem(addItemType, name, val, cur, null, note); // Pass note as last param for cash (v5 in handleAddItem)
-                            } else {
-                                handleAddItem(addItemType, name, sub, val, cur, note); // Pass note as last param for stock
-                            }
+                            if (addItemType.includes('cash')) { handleAddItem(addItemType, name, val, cur, null, note); } 
+                            else { handleAddItem(addItemType, name, sub, val, cur, note); }
                         }
                     }} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
                     
-                    {/* Edit Item Modal (Updated for editing Details) */}
+                    {/* Edit Item Modal */}
                     {editItem && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => setEditItem(null)}>
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setEditItem(null); }}>
                             <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額與資訊' : '更新股數與資訊'}</h3>
-                                    <button onClick={() => setEditItem(null)} className="text-slate-400"><Icon name="x" className="w-6 h-6" /></button>
+                                    <button onClick={() => { playSfx('pop'); setEditItem(null); }} className="text-slate-400"><Icon name="x" className="w-6 h-6" /></button>
                                 </div>
-                                
                                 <div className="space-y-3 mb-4">
-                                    <input 
-                                        type="text" 
-                                        id="editName"
-                                        defaultValue={editItem.data.name} 
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none"
-                                        placeholder="名稱"
-                                    />
-                                    <input 
-                                        type="text" 
-                                        id="editNote"
-                                        defaultValue={editItem.data.note} 
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 outline-none"
-                                        placeholder="備註 (例: 活存)"
-                                    />
+                                    <input type="text" id="editName" defaultValue={editItem.data.name} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="名稱"/>
+                                    <input type="text" id="editNote" defaultValue={editItem.data.note} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 outline-none" placeholder="備註 (例: 活存)"/>
                                 </div>
-
                                 {editItem.type.includes('cash') ? (
                                     <>
-                                        <Calculator 
-                                            initialValue={editItem.data.balance} 
-                                            onConfirm={(val) => handleUpdateValue(
-                                                editItem.data.id, 
-                                                editItem.type, 
-                                                val,
-                                                document.getElementById('editName').value,
-                                                document.getElementById('editNote').value
-                                            )} 
-                                        />
+                                        <Calculator initialValue={editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} playSfx={playSfx}/>
                                         <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end">
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (deleteConfirm) {
-                                                        performDelete(editItem.data.id, editItem.type);
-                                                    } else {
-                                                        setDeleteConfirm(true);
-                                                    }
-                                                }} 
-                                                className={`py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all ${deleteConfirm ? 'bg-red-600 text-white w-full justify-center' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}
-                                            >
-                                                <Icon name="trash-2" className="w-4 h-4 mr-2" />
-                                                {deleteConfirm ? '確定要刪除此帳戶嗎？' : '刪除帳戶'}
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all ${deleteConfirm ? 'bg-red-600 text-white w-full justify-center' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}><Icon name="trash-2" className="w-4 h-4 mr-2" />{deleteConfirm ? '確定要刪除此帳戶嗎？' : '刪除帳戶'}</button>
                                         </div>
                                     </>
                                 ) : (
                                     <>
                                         <input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus />
                                         <div className="flex gap-3">
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (deleteConfirm) {
-                                                        performDelete(editItem.data.id, editItem.type);
-                                                    } else {
-                                                        setDeleteConfirm(true);
-                                                    }
-                                                }} 
-                                                className={`py-4 px-6 rounded-xl transition-all ${deleteConfirm ? 'bg-red-600 text-white' : 'bg-red-500/10 text-red-500'}`}
-                                            >
-                                                {deleteConfirm ? '確定?' : <Icon name="trash-2" className="w-5 h-5" />}
-                                            </button>
-                                            <button onClick={() => handleUpdateValue(
-                                                editItem.data.id, 
-                                                editItem.type, 
-                                                document.getElementById('simpleInput').value,
-                                                document.getElementById('editName').value,
-                                                document.getElementById('editNote').value
-                                            )} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button>
+                                            <button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-4 px-6 rounded-xl transition-all ${deleteConfirm ? 'bg-red-600 text-white' : 'bg-red-500/10 text-red-500'}`}>{deleteConfirm ? '確定?' : <Icon name="trash-2" className="w-5 h-5" />}</button>
+                                            <button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value, document.getElementById('editName').value, document.getElementById('editNote').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button>
                                         </div>
                                     </>
                                 )}
                             </div>
                         </div>
                     )}
-                    {editGoal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{editGoal.id ? '編輯目標' : '新增目標'}</h3><button onClick={() => setEditGoal(null)} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input id="goalTitle" type="text" defaultValue={editGoal.title} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">目標金額</label><input id="goalTarget" type="number" defaultValue={editGoal.target} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => {const t = document.getElementById('goalTitle').value; const v = document.getElementById('goalTarget').value; if(t && v) { if(editGoal.id) handleUpdateGoal(editGoal.id, t, v); else { handleAddGoal(t, v); setEditGoal(null); } }}} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg">儲存目標</button></div></div>)}
+                    {editGoal && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{editGoal.id ? '編輯目標' : '新增目標'}</h3><button onClick={() => { playSfx('pop'); setEditGoal(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div><div className="space-y-4 mb-6"><div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input id="goalTitle" type="text" defaultValue={editGoal.title} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div><div><label className="text-xs text-slate-400 mb-1 block">目標金額</label><input id="goalTarget" type="number" defaultValue={editGoal.target} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div></div><button onClick={() => { playSfx('tap'); const t = document.getElementById('goalTitle').value; const v = document.getElementById('goalTarget').value; if(t && v) { if(editGoal.id) handleUpdateGoal(editGoal.id, t, v); else { handleAddGoal(t, v); setEditGoal(null); } }}} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg">儲存目標</button></div></div>)}
                 </div>
             );
         };
