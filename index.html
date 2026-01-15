@@ -5,10 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AssetPilot</title>
     
-    <!-- PWA Settings -->
+    <!-- PWA Settings & Manifest for Portrait Lock -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
+    <meta name="theme-color" content="#0f172a">
+    
+    <!-- 強制直式顯示的 Manifest 設定 -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot 2026","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
+    
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
@@ -767,7 +772,7 @@
             };
 
             // Backup & Restore
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.3_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.4_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
@@ -1079,7 +1084,7 @@
                                         </div>
                                     </div>
                                     
-                                    {/* Sound Toggle - Redesigned */}
+                                    {/* Sound Toggle - Redesigned Card */}
                                     <div className="mt-4 mb-2">
                                         <label className="block text-xs text-slate-400 mb-2">系統設定</label>
                                         <div 
@@ -1099,7 +1104,7 @@
                                                 </div>
                                                 <div className="flex flex-col">
                                                     <span className={`text-xs font-bold ${soundEnabled ? 'text-blue-100' : 'text-slate-300'}`}>音效回饋</span>
-                                                    <span className="text-[10px] text-slate-500">{soundEnabled ? '開啟' : '關閉'}</span>
+                                                    <span className="text-[10px] text-slate-500">{soundEnabled ? '系統音效已開啟' : '靜音模式'}</span>
                                                 </div>
                                             </div>
                                             <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${soundEnabled ? 'bg-blue-500' : 'bg-slate-600'}`}>
@@ -1144,7 +1149,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.3</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.4</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
@@ -1221,4 +1226,3 @@
     </script>
 </body>
 </html>
-
