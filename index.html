@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot</title>
+    <title>AssetPilot 2026</title>
     
     <!-- PWA Settings -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot 2026","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
@@ -61,7 +61,7 @@
             { title: "範例：每月 1 號", steps: ["檢查薪水入帳", "分配生活費"] },
             { title: "範例：每月 5 號", steps: ["確認定期定額扣款"] }
         ];
-        // Default Rates (Expanded)
+        // Default Rates
         const INITIAL_RATES = { 
             USD: 32.50, JPY: 0.22, CNY: 4.50, EUR: 35.00, GBP: 41.00, AUD: 21.50,
             CAD: 23.00, HKD: 4.10, SGD: 24.00, KRW: 0.024, CHF: 36.00, 
@@ -140,7 +140,7 @@
             { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊各區塊標題旁的「+」號，即可新增該類別的帳戶或股票。系統支援台幣、15種外幣及台美股即時報價。", tab: "wallet" },
             { targetId: "wallet-reorder-btns-cashTW", title: "金庫：自由排序", content: "每個人的習慣不同。透過箭頭，您可以自由上下移動區塊，將最常查看的資產移到最上方。", tab: "wallet" },
             { targetId: "nav-analysis", title: "前往分析", content: "最後是「分析」頁面，這裡提供月度報表與目標追蹤。", tab: "analysis" },
-            { targetId: "goal-add-btn", title: "分析：設定目標", content: "想存第一桶金？設定目標金額，環狀圖會即時顯示您的達成進度。", tab: "analysis" },
+            { targetId: "goal-add-btn", title: "分析：設定目標", content: "想存第一桶金？設定目標金額，環狀圖會即時顯示您的達成進度，激勵您繼續前進。", tab: "analysis" },
             { targetId: "header-refresh", title: "即時更新", content: "回到頂部工具列。點擊此按鈕，系統會立即連線更新所有「即時股價」與「匯率」，計算最新身價。", tab: "dashboard" },
             { targetId: "header-privacy", title: "隱私保護", content: "在公共場合不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字。", tab: "dashboard" },
             { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
@@ -199,7 +199,7 @@
             );
         };
 
-        // ... [WelcomeModal, Calculator remain same]
+        // --- Welcome Modal ---
         const WelcomeModal = ({ onConfirm }) => {
             const [name, setName] = useState('');
             return (
@@ -216,6 +216,7 @@
             );
         };
 
+        // ... [Calculator, CircularGoal, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
         const Calculator = ({ initialValue, onConfirm, playSfx }) => {
             const [display, setDisplay] = useState(String(initialValue));
             const [equation, setEquation] = useState('');
@@ -240,145 +241,186 @@
             );
         };
 
-        // --- 元件：資產趨勢線圖 (Updated Logic & Scrollable) ---
+        // --- 元件：資產趨勢線圖 (Dual Canvas, Fixed Y-Axis, Scrollable X) ---
         const AssetTrendChart = ({ history, timeRange, mode, customDates, isPrivacyMode }) => {
-            const chartRef = useRef(null);
-            const chartInstance = useRef(null);
-            
-            // Filter & Aggregate Logic
+            const yAxisChartRef = useRef(null);
+            const mainChartRef = useRef(null);
+            const scrollContainerRef = useRef(null);
+            const yAxisChartInstance = useRef(null);
+            const mainChartInstance = useRef(null);
+
+            // 1. Data Aggregation
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
                 
-                // Helper to parse date string "YYYY-MM-DD" safely
                 const parseDate = (str) => new Date(str.replace(/-/g, '/')); 
                 let chartHistory = [...history];
+                // Sort first just in case
+                chartHistory.sort((a, b) => a.date.localeCompare(b.date));
 
-                // 1. Filter by TimeRange first (cut data out)
-                let rangeData = [];
-                if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
-                     const s = parseDate(customDates.start);
-                     const e = parseDate(customDates.end);
-                     rangeData = chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
-                } else if (timeRange === '日') { // 7 Days
-                     const now = new Date();
-                     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6); // inclusive today = 7 days
-                     // Reset hours to compare only dates
-                     cutoff.setHours(0,0,0,0);
-                     rangeData = chartHistory.filter(h => parseDate(h.date) >= cutoff);
-                } else if (timeRange === '月' || timeRange === '年') {
-                    // For Monthly/Yearly, we take ALL history first, then aggregate.
-                    // Because user wants to see "Trend", usually means all available history aggregated by month/year.
-                    // Or "Last 12 months"? Usually "Max" logic for these buttons in finance apps.
-                    rangeData = chartHistory;
+                // If "Day" or "Custom", return all.
+                if (timeRange === '日' || timeRange === 'CUSTOM') {
+                    // For "Day", user wants *all* daily history available, scrollable.
+                    // But maybe filter custom dates? 
+                    if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
+                        const s = parseDate(customDates.start);
+                        const e = parseDate(customDates.end);
+                        return chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
+                    }
+                    return chartHistory;
                 }
 
-                // 2. Aggregate Data
-                if (timeRange === '日' || timeRange === 'CUSTOM') return rangeData; // No aggregation for Daily
-
+                // Aggregation for Month/Year
                 const groups = {};
-                rangeData.forEach(item => {
+                chartHistory.forEach(item => {
                     const d = parseDate(item.date);
                     let key;
-                    if (timeRange === '月') {
-                        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
-                    } else if (timeRange === '年') {
-                        key = `${d.getFullYear()}`; // YYYY
-                    }
-                    // Overwrite: keep the latest entry for that period (end of month/year value)
-                    groups[key] = item; 
+                    if (timeRange === '月') key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    else if (timeRange === '年') key = `${d.getFullYear()}`;
+                    groups[key] = item; // Overwrite -> Last value wins
                 });
-
                 return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
-
             }, [history, timeRange, customDates]);
 
-            // Chart Rendering
+            // 2. Prepare Display Data
+            const displayData = useMemo(() => {
+                return filteredData.map(h => {
+                    if (mode === 'total') return h.total;
+                    if (mode === 'cashTW') return h.cashTW || 0;
+                    if (mode === 'stockTW') return h.stockTW || 0;
+                    if (mode === 'cashForeign') return h.cashForeign || 0;
+                    if (mode === 'stockForeign') return h.stockForeign || 0;
+                    return 0;
+                });
+            }, [filteredData, mode]);
+
+            const labels = useMemo(() => {
+                return filteredData.map(h => {
+                    if (timeRange === '年') return h.date.substring(0, 4);
+                    if (timeRange === '月') return h.date.substring(0, 7);
+                    return h.date.slice(5).replace('-', '/');
+                });
+            }, [filteredData, timeRange]);
+
+            // 3. Min/Max Calculation for Y-Axis Synchronization
+            const { min, max } = useMemo(() => {
+                if (displayData.length === 0) return { min: 0, max: 100 };
+                let dataMin = Math.min(...displayData);
+                let dataMax = Math.max(...displayData);
+                // Add padding
+                const padding = (dataMax - dataMin) * 0.1;
+                // Avoid zero range
+                if (padding === 0) return { min: dataMin * 0.9, max: dataMax * 1.1 };
+                return { min: dataMin - padding, max: dataMax + padding };
+            }, [displayData]);
+
+            // 4. Render Two Charts
             useEffect(() => {
-                if (chartInstance.current) chartInstance.current.destroy();
-                const ctx = chartRef.current.getContext('2d');
-                
-                let color = '#3b82f6';
-                if (mode === 'cashTW') color = '#10b981'; 
-                if (mode === 'stockTW') color = '#0ea5e9'; 
-                if (mode === 'cashForeign') color = '#a855f7'; 
-                if (mode === 'stockForeign') color = '#ec4899';
-                
-                const gradient = ctx.createLinearGradient(0, 0, 0, 300); 
-                gradient.addColorStop(0, color + '80'); 
-                gradient.addColorStop(1, color + '00');
-                
-                const smartFormatter = (val) => { 
-                    if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億'; 
-                    if (Math.abs(val) >= 10000) return (val / 10000).toFixed(1).replace(/\.0$/, '') + '萬'; 
-                    return val; 
+                // Destroy old instances
+                if (yAxisChartInstance.current) yAxisChartInstance.current.destroy();
+                if (mainChartInstance.current) mainChartInstance.current.destroy();
+
+                const commonOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    animation: false,
+                    layout: { padding: { top: 10, bottom: 10 } } // Sync padding
                 };
 
-                // Prepare Data
-                // If single point, duplicate it to show a flat line or just point? Chart.js shows point if 1 data.
-                // But let's allow it to be just a point.
-                const displayData = filteredData;
-                
-                // Format Labels based on range
-                const labels = displayData.map(h => {
-                    if (timeRange === '年') return h.date.substring(0, 4); // YYYY
-                    if (timeRange === '月') return h.date.substring(0, 7); // YYYY-MM
-                    return h.date.slice(5).replace('-', '/'); // MM/DD
+                let color = '#3b82f6';
+                if (mode === 'cashTW') color = '#10b981'; if (mode === 'stockTW') color = '#0ea5e9'; if (mode === 'cashForeign') color = '#a855f7'; if (mode === 'stockForeign') color = '#ec4899';
+                const mainCtx = mainChartRef.current.getContext('2d');
+                const gradient = mainCtx.createLinearGradient(0, 0, 0, 300); gradient.addColorStop(0, color + '80'); gradient.addColorStop(1, color + '00');
+
+                // --- Y-Axis Chart (Left) ---
+                const yCtx = yAxisChartRef.current.getContext('2d');
+                yAxisChartInstance.current = new Chart(yCtx, {
+                    type: 'line',
+                    data: { labels: labels, datasets: [{ data: displayData, borderColor: 'transparent', pointRadius: 0 }] }, // Hidden data
+                    options: {
+                        ...commonOptions,
+                        scales: {
+                            x: { display: false },
+                            y: {
+                                min, max, // Force sync
+                                grid: { drawBorder: false, display: false }, // Hide grid on axis chart
+                                ticks: { 
+                                    color: '#94a3b8', font: {size: 10}, maxTicksLimit: 6,
+                                    callback: (val) => {
+                                        if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(1) + '億';
+                                        if (Math.abs(val) >= 10000) return (val / 10000).toFixed(0) + '萬';
+                                        return val;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 });
 
-                chartInstance.current = new Chart(ctx, { 
-                    type: 'line', 
-                    data: { 
-                        labels: labels, 
-                        datasets: [{ 
-                            data: displayData.map(h => { 
-                                if (mode === 'total') return h.total; 
-                                if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); 
-                                if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); 
-                                if (mode === 'cashForeign') return h.cashForeign || 0; 
-                                if (mode === 'stockForeign') return h.stockForeign || 0; 
-                                return 0; 
-                            }), 
-                            borderColor: color, 
-                            backgroundColor: gradient, 
-                            borderWidth: 2, 
-                            pointRadius: displayData.length === 1 ? 6 : 4, // Bigger point if single
-                            pointHoverRadius: 6, 
-                            fill: true, 
-                            tension: 0.4 
-                        }] 
-                    }, 
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        interaction: { intersect: false, mode: 'index' }, 
+                // --- Main Chart (Right) ---
+                mainChartInstance.current = new Chart(mainCtx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: displayData,
+                            borderColor: color, backgroundColor: gradient, borderWidth: 2,
+                            pointRadius: displayData.length === 1 ? 4 : 3, // Show points
+                            pointBackgroundColor: color,
+                            fill: true, tension: 0.4
+                        }]
+                    },
+                    options: {
+                        ...commonOptions,
+                        interaction: { intersect: false, mode: 'index' },
                         plugins: { 
-                            legend: { display: false }, 
-                            tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } 
-                        }, 
-                        scales: { 
-                            x: { grid: { display: false }, ticks: { color: '#64748b', font: {size: 10} } }, 
-                            y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } 
-                        } 
-                    } 
+                            legend: { display: false },
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` }
+                            }
+                        },
+                        scales: {
+                            x: { 
+                                grid: { display: false, drawBorder: false }, 
+                                ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: true, autoSkipPadding: 20 } 
+                            },
+                            y: { 
+                                min, max, // Force sync
+                                display: false, // Hide Y-axis labels/line
+                                grid: { color: '#1e293b' } // Keep horizontal grid lines
+                            }
+                        }
+                    }
                 });
-                return () => { if (chartInstance.current) chartInstance.current.destroy(); };
-            }, [filteredData, mode, timeRange]);
 
-            // Calculate width for scrolling. E.g. 50px per point minimum?
-            // If points < 6, use 100%. If more, expand.
-            const minWidth = Math.max(100, filteredData.length * 60); 
+                // Scroll to end on update
+                if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+                }
+
+            }, [filteredData, displayData, labels, min, max, mode]);
+
+            // Calculate Width: 100% if <= 7 points, else expand
+            const containerWidth = Math.max(100, (displayData.length / 7) * 100);
 
             return (
-                <div id="chart-area" className={`w-full overflow-x-auto no-scrollbar transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
-                    <div style={{ width: `${minWidth > 100 ? minWidth + '%' : '100%'}`, minWidth: '100%', height: '192px' }}>
-                        <canvas ref={chartRef} />
+                <div className={`w-full h-48 flex transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
+                    {/* Fixed Y-Axis */}
+                    <div className="w-10 h-full flex-shrink-0 bg-slate-800/0 relative z-20 border-r border-slate-700/50">
+                        <canvas ref={yAxisChartRef} />
+                    </div>
+                    {/* Scrollable Chart Area */}
+                    <div ref={scrollContainerRef} className="flex-1 h-full overflow-x-auto no-scrollbar relative">
+                        <div style={{ width: `${containerWidth}%`, height: '100%' }}>
+                            <canvas ref={mainChartRef} />
+                        </div>
                     </div>
                 </div>
             );
         };
 
-        // ... [AllocationBar, CircularGoal, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal, App (mostly same, updating buttons)] ...
-        
         const AllocationBar = ({ cash, tw, us, total, isPrivacyMode, playSfx }) => {
             if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
             const pCash = (cash / total) * 100; const pTw = (tw / total) * 100; const pUs = (us / total) * 100;
@@ -513,7 +555,7 @@
             const [isPrivacyMode, setIsPrivacyMode] = useState(false); 
             const [activeTab, setActiveTab] = useState('dashboard');
             const [trendMode, setTrendMode] = useState('total'); 
-            const [timeRange, setTimeRange] = useState('1W'); 
+            const [timeRange, setTimeRange] = useState('日'); 
             const [customDates, setCustomDates] = useState({ start: '', end: '' }); 
             const [editItem, setEditItem] = useState(null);
             const [deleteConfirm, setDeleteConfirm] = useState(false);
