@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot 2026</title>
+    <title>AssetPilot</title>
     
     <!-- PWA Settings & Manifest for Portrait Lock -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -162,6 +162,7 @@
 
         // --- Spotlight Tutorial Component ---
         const TutorialSpotlight = ({ stepIndex, totalSteps, onNext, onPrev, onClose }) => {
+            // ... (Same as before)
             const step = TUTORIAL_STEPS[stepIndex];
             const [targetRect, setTargetRect] = useState(null);
 
@@ -219,7 +220,7 @@
             );
         };
 
-        // ... [Calculator, AssetTrendChart, AllocationBar, CircularGoal, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
+        // ... [Calculator, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
         const Calculator = ({ initialValue, onConfirm, playSfx }) => {
             const [display, setDisplay] = useState(String(initialValue));
             const [equation, setEquation] = useState('');
@@ -247,38 +248,69 @@
         const AssetTrendChart = ({ history, timeRange, mode, customDates, isPrivacyMode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
+
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                const d = new Date();
-                const todayStr = getLocalDateString();
-                // Ensure today's point exists visually in chart
+                
+                // Aggregation Logic helper
+                const aggregateData = (data, range) => {
+                    if (data.length === 0) return [];
+                    if (range === '1W' || range === 'CUSTOM') return data; // Daily
+
+                    const groups = {};
+                    data.forEach(item => {
+                        const d = new Date(item.date.replace(/-/g, '/'));
+                        let key;
+                        if (range === '1M') {
+                            // Weekly aggregation: key by Year-Week
+                            // Simple approach: key by Monday of the week
+                            const day = d.getDay();
+                            const diff = d.getDate() - day + (day == 0 ? -6 : 1); 
+                            const monday = new Date(d);
+                            monday.setDate(diff);
+                            key = `${monday.getFullYear()}-${monday.getMonth()}-${monday.getDate()}`; // unique key for week
+                        } else if (range === 'YTD') {
+                            key = `${d.getFullYear()}-${d.getMonth()}`; // Monthly
+                        } else if (range === 'ALL') {
+                            key = `${d.getFullYear()}`; // Yearly
+                        }
+                        groups[key] = item; // Overwrite to keep the last record of the period
+                    });
+                    
+                    return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+                };
+
                 let chartHistory = [...history];
-                // Note: We don't force push to history state here to avoid loop, but we can append for display
-                // Actually, history is updated in main App useEffect, so it should be fine.
-                
                 // Parse dates properly
-                const parseDate = (str) => new Date(str.replace(/-/g, '/')); // Better cross-browser support
-                
+                const parseDate = (str) => new Date(str.replace(/-/g, '/')); 
+
+                // 1. Filter by Range first
+                let rangeData = [];
                 if (timeRange === 'CUSTOM' && customDates.start && customDates.end) { 
                     const s = parseDate(customDates.start);
                     const e = parseDate(customDates.end);
-                    return chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
+                    rangeData = chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
+                } else {
+                    const now = new Date(); 
+                    let days = 365;
+                    if (timeRange === '1W') days = 7; 
+                    if (timeRange === '1M') days = 30; 
+                    
+                    if (timeRange === 'YTD') {
+                        const startOfYear = new Date(now.getFullYear(), 0, 1);
+                        rangeData = chartHistory.filter(h => parseDate(h.date) >= startOfYear);
+                    } else if (timeRange === 'ALL') {
+                        rangeData = chartHistory;
+                    } else {
+                        const cutoff = new Date(); 
+                        cutoff.setDate(cutoff.getDate() - days);
+                        rangeData = chartHistory.filter(h => parseDate(h.date) >= cutoff);
+                    }
                 }
-                
-                const now = new Date(); 
-                let days = 365;
-                if (timeRange === '1W') days = 7; 
-                if (timeRange === '1M') days = 30; 
-                if (timeRange === 'YTD') {
-                    const startOfYear = new Date(now.getFullYear(), 0, 1);
-                    return chartHistory.filter(h => parseDate(h.date) >= startOfYear);
-                }
-                // ALL (MAX)
-                if (timeRange === 'ALL') return chartHistory;
 
-                const cutoff = new Date(); 
-                cutoff.setDate(cutoff.getDate() - days);
-                return chartHistory.filter(h => parseDate(h.date) >= cutoff);
+                // 2. Aggregate Data
+                return aggregateData(rangeData, timeRange);
+
             }, [history, timeRange, customDates]);
 
             useEffect(() => {
@@ -293,11 +325,40 @@
                     return val; 
                 };
                 
-                // Better visual for single point
+                // Better visual for single point: duplicate it to make a line
                 const displayData = filteredData.length === 1 ? [filteredData[0], filteredData[0]] : filteredData;
                 const labels = displayData.map(h => h.date.slice(5).replace('-', '/'));
 
-                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ data: displayData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 10} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
+                chartInstance.current = new Chart(ctx, { 
+                    type: 'line', 
+                    data: { 
+                        labels: labels, 
+                        datasets: [{ 
+                            data: displayData.map(h => { 
+                                if (mode === 'total') return h.total; 
+                                if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); 
+                                if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); 
+                                if (mode === 'cashForeign') return h.cashForeign || 0; 
+                                if (mode === 'stockForeign') return h.stockForeign || 0; 
+                                return 0; 
+                            }), 
+                            borderColor: color, 
+                            backgroundColor: gradient, 
+                            borderWidth: 2, 
+                            pointRadius: 4, // Always show points for clarity
+                            pointHoverRadius: 6, 
+                            fill: true, 
+                            tension: 0.4 
+                        }] 
+                    }, 
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        interaction: { intersect: false, mode: 'index' }, 
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, 
+                        scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 10} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } 
+                    } 
+                });
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [filteredData, mode]);
             return <div id="chart-area" className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
@@ -375,9 +436,6 @@
             const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); 
             const [confirmDeleteStep, setConfirmDeleteStep] = useState(null);
 
-            // Removed empty useEffect for icons to prevent unnecessary re-renders
-            
-            // Force icon update when editing state changes
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
             }, [isEditing, sopDetails]);
@@ -532,7 +590,7 @@
             const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             
-            // Multi-currency Rates (Merged with INITIAL_RATES to fix missing keys)
+            // Multi-currency Rates
             const [rates, setRates] = useState(() => {
                 const saved = localStorage.getItem('ap_rates_map');
                 const savedRates = saved ? JSON.parse(saved) : {};
@@ -699,10 +757,6 @@
                     total: Math.round(totalNetWorth)
                 };
 
-                // Logic: 
-                // 1. If no history, add today.
-                // 2. If last record is not today, add today.
-                // 3. If last record is today but value changed significantly, update today's record (replace it).
                 if (history.length === 0) {
                      setHistory([newRecord]);
                 } else if (lastRecord.date !== today) {
@@ -711,7 +765,7 @@
                     // Update today's record if value changed significantly
                     setHistory(prev => [...prev.slice(0, -1), newRecord]);
                 }
-            }, [totalNetWorth]); // Trigger when totalNetWorth changes (which depends on rates/assets)
+            }, [totalNetWorth]);
 
             // Report Logic
             const monthlyReportData = useMemo(() => {
@@ -821,7 +875,7 @@
             };
 
             // Backup & Restore
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.6_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.7_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
@@ -1198,7 +1252,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.6</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.7</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
