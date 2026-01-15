@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot</title>
+    <title>AssetPilot 2026</title>
     
     <!-- PWA Settings & Manifest for Portrait Lock -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
     <meta name="theme-color" content="#0f172a">
     
-    <!-- 強制直式顯示的 Manifest 設定 -->
+    <!-- PWA Manifest -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot 2026","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
     
     <link rel="icon" type="image/png" href="icon.png">
@@ -92,6 +92,15 @@
         // --- Helper Functions ---
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0 }).format(amount).replace('TWD', 'NTD');
         const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', currencyDisplay: 'code' }).format(amount);
+        
+        // Fix: Get Local Date String YYYY-MM-DD
+        const getLocalDateString = () => {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
 
         // --- 歷史資料生成器 (空) ---
         const generateCorrectedHistory = () => [];
@@ -240,11 +249,36 @@
             const chartInstance = useRef(null);
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                if (timeRange === 'CUSTOM' && customDates.start && customDates.end) { return history.filter(h => h.date >= customDates.start && h.date <= customDates.end); }
-                const now = new Date(); let days = 365;
-                if (timeRange === '1W') days = 7; if (timeRange === '1M') days = 30; if (timeRange === 'YTD') days = Math.floor((now - new Date(now.getFullYear(), 0, 1)) / (1000 * 60 * 60 * 24)) + 1;
-                const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
-                return history.filter(h => new Date(h.date) >= cutoff);
+                const d = new Date();
+                const todayStr = getLocalDateString();
+                // Ensure today's point exists visually in chart
+                let chartHistory = [...history];
+                // Note: We don't force push to history state here to avoid loop, but we can append for display
+                // Actually, history is updated in main App useEffect, so it should be fine.
+                
+                // Parse dates properly
+                const parseDate = (str) => new Date(str.replace(/-/g, '/')); // Better cross-browser support
+                
+                if (timeRange === 'CUSTOM' && customDates.start && customDates.end) { 
+                    const s = parseDate(customDates.start);
+                    const e = parseDate(customDates.end);
+                    return chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
+                }
+                
+                const now = new Date(); 
+                let days = 365;
+                if (timeRange === '1W') days = 7; 
+                if (timeRange === '1M') days = 30; 
+                if (timeRange === 'YTD') {
+                    const startOfYear = new Date(now.getFullYear(), 0, 1);
+                    return chartHistory.filter(h => parseDate(h.date) >= startOfYear);
+                }
+                // ALL (MAX)
+                if (timeRange === 'ALL') return chartHistory;
+
+                const cutoff = new Date(); 
+                cutoff.setDate(cutoff.getDate() - days);
+                return chartHistory.filter(h => parseDate(h.date) >= cutoff);
             }, [history, timeRange, customDates]);
 
             useEffect(() => {
@@ -253,9 +287,17 @@
                 let color = '#3b82f6';
                 if (mode === 'cashTW') color = '#10b981'; if (mode === 'stockTW') color = '#0ea5e9'; if (mode === 'cashForeign') color = '#a855f7'; if (mode === 'stockForeign') color = '#ec4899';
                 const gradient = ctx.createLinearGradient(0, 0, 0, 300); gradient.addColorStop(0, color + '80'); gradient.addColorStop(1, color + '00');
-                const smartFormatter = (val, index, ticks) => { let decimals = 0; if (ticks.length > 1) { const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1); if (stepSize < 10000) decimals = 1; if (stepSize < 1000) decimals = 2; } if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億'; if (Math.abs(val) >= 10000) return (val / 10000).toFixed(decimals) + '萬'; return val; };
-                const shouldShowPoints = filteredData.length < 2;
-                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: filteredData.map(h => h.date.slice(5).replace('-', '/')), datasets: [{ data: filteredData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: shouldShowPoints ? 4 : 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
+                const smartFormatter = (val) => { 
+                    if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億'; 
+                    if (Math.abs(val) >= 10000) return (val / 10000).toFixed(1).replace(/\.0$/, '') + '萬'; 
+                    return val; 
+                };
+                
+                // Better visual for single point
+                const displayData = filteredData.length === 1 ? [filteredData[0], filteredData[0]] : filteredData;
+                const labels = displayData.map(h => h.date.slice(5).replace('-', '/'));
+
+                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ data: displayData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 10} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [filteredData, mode]);
             return <div id="chart-area" className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
@@ -330,12 +372,15 @@
         const SopDetailsModal = ({ sopDetails, setSopDetails, onClose, playSfx }) => {
             const [isEditing, setIsEditing] = useState(false);
             const [inputModal, setInputModal] = useState(null); // { type, sectionIdx, stepIdx, value }
-            const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); // NEW: Track delete confirmation for sections
-            const [confirmDeleteStep, setConfirmDeleteStep] = useState(null); // NEW: Track delete confirmation for steps { sIdx, stIdx }
+            const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); 
+            const [confirmDeleteStep, setConfirmDeleteStep] = useState(null);
 
+            // Removed empty useEffect for icons to prevent unnecessary re-renders
+            
+            // Force icon update when editing state changes
             useEffect(() => {
                 if (window.lucide) window.lucide.createIcons();
-            });
+            }, [isEditing, sopDetails]);
 
             const openInput = (type, sectionIdx, stepIdx, value) => {
                 playSfx('pop');
@@ -369,13 +414,11 @@
                 } else {
                     playSfx('tap');
                     setConfirmDeleteIdx(idx);
-                    // Auto reset after 3 seconds
                     setTimeout(() => setConfirmDeleteIdx(null), 3000);
                 }
             };
 
             const handleDeleteStep = (sectionIdx, stepIdx) => {
-                // Check if we are confirming THIS specific step
                 if (confirmDeleteStep && confirmDeleteStep.sIdx === sectionIdx && confirmDeleteStep.stIdx === stepIdx) {
                     playSfx('delete');
                     const newDetails = [...sopDetails];
@@ -644,7 +687,7 @@
                 // Prevent recording bad data
                 if (isNaN(totalNetWorth) || (totalNetWorth === 0 && history.length === 0)) return;
                 
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateString(); // Use local date string
                 const lastRecord = history[history.length - 1];
                 const newRecord = { 
                     date: today, 
@@ -656,13 +699,19 @@
                     total: Math.round(totalNetWorth)
                 };
 
-                if (!lastRecord || lastRecord.date !== today) {
+                // Logic: 
+                // 1. If no history, add today.
+                // 2. If last record is not today, add today.
+                // 3. If last record is today but value changed significantly, update today's record (replace it).
+                if (history.length === 0) {
+                     setHistory([newRecord]);
+                } else if (lastRecord.date !== today) {
                     setHistory(prev => [...prev, newRecord]);
                 } else if (Math.abs(lastRecord.total - totalNetWorth) > 100) {
                     // Update today's record if value changed significantly
                     setHistory(prev => [...prev.slice(0, -1), newRecord]);
                 }
-            }, [totalNetWorth]);
+            }, [totalNetWorth]); // Trigger when totalNetWorth changes (which depends on rates/assets)
 
             // Report Logic
             const monthlyReportData = useMemo(() => {
@@ -772,7 +821,7 @@
             };
 
             // Backup & Restore
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.4_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.6_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
@@ -944,7 +993,7 @@
                                     <h3 className="text-xs text-slate-400 font-bold uppercase">資產趨勢</h3>
                                     <div id="chart-controls" className="flex bg-slate-800 rounded-lg p-0.5">
                                         {['1W', '1M', 'YTD', 'ALL'].map(r => (
-                                            <button key={r} onClick={() => { playSfx('tap'); setTimeRange(r); setCustomDates({start:'', end:''}); }} className={`px-2 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r}</button>
+                                            <button key={r} onClick={() => { playSfx('tap'); setTimeRange(r); setCustomDates({start:'', end:''}); }} className={`px-2 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r === 'ALL' ? '全期間 (MAX)' : r}</button>
                                         ))}
                                         <button onClick={() => { playSfx('pop'); setShowDateModal(true); }} className={`px-2 py-0.5 text-[10px] rounded flex items-center justify-center ${timeRange === 'CUSTOM' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>
                                             <Icon name="calendar" className="w-3 h-3" />
@@ -1149,7 +1198,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.4</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.6</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
