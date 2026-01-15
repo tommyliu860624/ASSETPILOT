@@ -85,8 +85,24 @@
         ];
 
         // --- Helper Functions ---
-        const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(amount);
-        const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 2 }).format(amount);
+        // Enhanced formatMoney to use NTD instead of TWD/NT$
+        const formatMoney = (amount) => {
+            return new Intl.NumberFormat('zh-TW', { 
+                style: 'currency', 
+                currency: 'TWD', 
+                currencyDisplay: 'code', 
+                maximumFractionDigits: 0 
+            }).format(amount).replace('TWD', 'NTD');
+        };
+
+        // Enhanced formatForeign to use ISO code (e.g. USD, JPY) which handles decimals correctly for each currency
+        const formatForeign = (amount, currency) => {
+            return new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: currency || 'USD', 
+                currencyDisplay: 'code'
+            }).format(amount);
+        };
 
         // --- 歷史資料生成器 (空) ---
         const generateCorrectedHistory = () => [];
@@ -250,7 +266,7 @@
                 const gradient = ctx.createLinearGradient(0, 0, 0, 300); gradient.addColorStop(0, color + '80'); gradient.addColorStop(1, color + '00');
                 const smartFormatter = (val, index, ticks) => { let decimals = 0; if (ticks.length > 1) { const stepSize = (ticks[ticks.length - 1].value - ticks[0].value) / (ticks.length - 1); if (stepSize < 10000) decimals = 1; if (stepSize < 1000) decimals = 2; } if (Math.abs(val) >= 100000000) return (val / 100000000).toFixed(2).replace(/\.00$/, '') + '億'; if (Math.abs(val) >= 10000) return (val / 10000).toFixed(decimals) + '萬'; return val; };
                 const shouldShowPoints = filteredData.length < 2;
-                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: filteredData.map(h => h.date.slice(5).replace('-', '/')), datasets: [{ data: filteredData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: shouldShowPoints ? 4 : 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` $${new Intl.NumberFormat('zh-TW').format(ctx.parsed.y)}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
+                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: filteredData.map(h => h.date.slice(5).replace('-', '/')), datasets: [{ data: filteredData.map(h => { if (mode === 'total') return h.total; if (mode === 'cashTW') return h.cashTW !== undefined ? h.cashTW : (h.cash || 0); if (mode === 'stockTW') return h.stockTW !== undefined ? h.stockTW : (h.tw || 0); if (mode === 'cashForeign') return h.cashForeign || 0; if (mode === 'stockForeign') return h.stockForeign || 0; return 0; }), borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: shouldShowPoints ? 4 : 0, pointHoverRadius: 4, fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 6, font: {size: 9} } }, y: { beginAtZero: false, grid: { color: '#1e293b' }, ticks: { color: '#64748b', font: {size: 10}, maxTicksLimit: 6, callback: smartFormatter } } } } });
                 return () => { if (chartInstance.current) chartInstance.current.destroy(); };
             }, [filteredData, mode]);
             return <div id="chart-area" className={`h-48 w-full transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}><canvas ref={chartRef} /></div>;
@@ -767,7 +783,7 @@
             };
 
             // Backup & Restore
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.0_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v20.2_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
 
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
@@ -872,7 +888,7 @@
                                     <button onClick={() => { playSfx('pop'); setAddItemType('stockForeign'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
-                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500">{formatForeign(item.price * item.shares, item.currency)}</div></div></div>))}
+                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono">{formatForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono">@ {formatForeign(item.price, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -890,7 +906,7 @@
                                     <button onClick={() => { playSfx('pop'); setAddItemType('stockTW'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button>
                                 </div>
                             </div>
-                            {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500">${item.price.toFixed(2)}</div></div></div>))}
+                            {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500 font-mono">@ {displayMoney(item.price)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1134,7 +1150,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.0</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v20.2</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
