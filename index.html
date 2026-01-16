@@ -6,7 +6,7 @@
     <title>AssetPilot</title>
     
     <!-- PWA Settings -->
-    <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot 2026","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
+    <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
@@ -23,7 +23,7 @@
 
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
-        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); transition: border-color 0.3s ease, box-shadow 0.3s ease; }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
         .safe-area-top { padding-top: env(safe-area-inset-top); }
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
@@ -37,6 +37,9 @@
         input[type="date"] { color-scheme: dark; appearance: none; -webkit-appearance: none; background-color: transparent; min-height: 2.5rem; }
         .blur-content { filter: blur(8px); transition: filter 0.3s ease; }
         .no-blur { filter: blur(0); transition: filter 0.3s ease; }
+        /* Goal Completion Effect */
+        .goal-completed { border-color: rgba(234, 179, 8, 0.6); box-shadow: 0 0 15px rgba(234, 179, 8, 0.2); animation: pulse-gold 3s infinite; }
+        @keyframes pulse-gold { 0% { box-shadow: 0 0 10px rgba(234, 179, 8, 0.1); } 50% { box-shadow: 0 0 20px rgba(234, 179, 8, 0.3); border-color: rgba(234, 179, 8, 0.8); } 100% { box-shadow: 0 0 10px rgba(234, 179, 8, 0.1); } }
         /* Custom Scrollbar */
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
@@ -61,35 +64,33 @@
             { title: "範例：每月 1 號", steps: ["檢查薪水入帳", "分配生活費"] },
             { title: "範例：每月 5 號", steps: ["確認定期定額扣款"] }
         ];
-        // Default Rates (Expanded)
         const INITIAL_RATES = { 
             USD: 32.50, JPY: 0.22, CNY: 4.50, EUR: 35.00, GBP: 41.00, AUD: 21.50,
             CAD: 23.00, HKD: 4.10, SGD: 24.00, KRW: 0.024, CHF: 36.00, 
             NZD: 19.50, THB: 0.90, VND: 0.0013, MYR: 7.00
         };
 
-        // 擴充幣別清單
         const CURRENCY_OPTIONS = [
-            { code: 'USD', name: '美元' },
-            { code: 'JPY', name: '日圓' },
-            { code: 'EUR', name: '歐元' },
-            { code: 'CNY', name: '人民幣' },
-            { code: 'GBP', name: '英鎊' },
-            { code: 'AUD', name: '澳幣' },
-            { code: 'CAD', name: '加幣' },
-            { code: 'HKD', name: '港幣' },
-            { code: 'SGD', name: '新加坡幣' },
-            { code: 'KRW', name: '韓元' },
-            { code: 'CHF', name: '瑞士法郎' },
-            { code: 'NZD', name: '紐西蘭幣' },
-            { code: 'THB', name: '泰銖' },
-            { code: 'VND', name: '越南盾' },
-            { code: 'MYR', name: '馬來西亞林吉特' }
+            { code: 'USD', name: '美元' }, { code: 'JPY', name: '日圓' }, { code: 'EUR', name: '歐元' },
+            { code: 'CNY', name: '人民幣' }, { code: 'GBP', name: '英鎊' }, { code: 'AUD', name: '澳幣' },
+            { code: 'CAD', name: '加幣' }, { code: 'HKD', name: '港幣' }, { code: 'SGD', name: '新加坡幣' },
+            { code: 'KRW', name: '韓元' }, { code: 'CHF', name: '瑞士法郎' }, { code: 'NZD', name: '紐西蘭幣' },
+            { code: 'THB', name: '泰銖' }, { code: 'VND', name: '越南盾' }, { code: 'MYR', name: '馬來西亞林吉特' }
         ];
 
         // --- Helper Functions ---
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0 }).format(amount).replace('TWD', 'NTD');
         const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', currencyDisplay: 'code' }).format(amount);
+        const formatNumberInput = (val) => {
+            if (!val && val !== 0) return '';
+            const parts = val.toString().replace(/,/g, '').split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            return parts.join('.');
+        };
+        const parseNumberInput = (val) => {
+            if (!val) return 0;
+            return parseFloat(val.toString().replace(/,/g, ''));
+        };
         
         const getLocalDateString = () => {
             const d = new Date();
@@ -99,7 +100,6 @@
             return `${year}-${month}-${day}`;
         };
 
-        // --- 歷史資料生成器 (空) ---
         const generateCorrectedHistory = () => [];
 
         // --- 音效引擎 ---
@@ -137,10 +137,10 @@
             { targetId: "allocation-section", title: "戰情室：資產配置", content: "一眼看穿您的資產分布。透過顏色區塊，快速了解現金、台股、外幣與海外投資的佔比，確保投資組合平衡。", tab: "dashboard" },
             { targetId: "sop-section", title: "戰情室：每月任務", content: "理財需要紀律。在這裡設定每月的 SOP（如：發薪日分配、繳卡費），按部就班完成任務。", tab: "dashboard" },
             { targetId: "nav-wallet", title: "前往金庫", content: "接下來我們進入「金庫」，這是您管理所有帳戶與資產的核心區域。", tab: "wallet" },
-            { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊各區塊標題旁的「+」號，即可新增該類別的帳戶或股票。系統支援台幣、15種外幣及台美股即時報價。", tab: "wallet" },
+            { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊各區塊標題旁的「+」號，即可新增該類別的帳戶或股票。現在所有輸入都支援計算機功能！", tab: "wallet" },
             { targetId: "wallet-reorder-btns-cashTW", title: "金庫：自由排序", content: "每個人的習慣不同。透過箭頭，您可以自由上下移動區塊，將最常查看的資產移到最上方。", tab: "wallet" },
             { targetId: "nav-analysis", title: "前往分析", content: "最後是「分析」頁面，這裡提供月度報表與目標追蹤。", tab: "analysis" },
-            { targetId: "goal-add-btn", title: "分析：設定目標", content: "現在可以設定「專款專用」的目標了！指定特定帳戶，設定截止日期，讓理財計畫更務實。", tab: "analysis" },
+            { targetId: "goal-add-btn", title: "分析：設定目標", content: "現在可以設定「專款專用」的目標了！輸入金額時同樣支援計算機，方便您計算總需求。", tab: "analysis" },
             { targetId: "header-refresh", title: "即時更新", content: "回到頂部工具列。點擊此按鈕，系統會立即連線更新所有「即時股價」與「匯率」，計算最新身價。", tab: "dashboard" },
             { targetId: "header-privacy", title: "隱私保護", content: "在公共場合不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字。", tab: "dashboard" },
             { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
@@ -156,11 +156,9 @@
             </div>
         );
 
-        // --- Spotlight Tutorial Component ---
         const TutorialSpotlight = ({ stepIndex, totalSteps, onNext, onPrev, onClose }) => {
             const step = TUTORIAL_STEPS[stepIndex];
             const [targetRect, setTargetRect] = useState(null);
-
             useLayoutEffect(() => {
                 const updatePosition = () => {
                     if (step.targetId) {
@@ -176,9 +174,7 @@
                 window.addEventListener('resize', updatePosition);
                 return () => { window.removeEventListener('resize', updatePosition); clearTimeout(timer); };
             }, [stepIndex, step.targetId]);
-
             const isTop = targetRect && targetRect.top > window.innerHeight / 2;
-            
             return (
                 <div className="fixed inset-0 z-[300] overflow-hidden">
                     {targetRect ? (
@@ -198,7 +194,6 @@
             );
         };
 
-        // --- NEW: Welcome Modal (First Time User) ---
         const WelcomeModal = ({ onConfirm }) => {
             const [name, setName] = useState('');
             return (
@@ -215,17 +210,69 @@
             );
         };
 
-        // ... [Calculator, AssetTrendChart, AllocationBar, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
-        const Calculator = ({ initialValue, onConfirm, playSfx }) => {
-            const [display, setDisplay] = useState(String(initialValue));
+        const Calculator = ({ initialValue, onValueChange, onConfirm, showConfirmBtn = true, playSfx }) => {
+            const [display, setDisplay] = useState(initialValue ? formatNumberInput(initialValue) : '0');
             const [equation, setEquation] = useState('');
-            const handleNum = (num) => { playSfx('tap'); if (display === '0' && num !== '.') setDisplay(num); else setDisplay(display + num); };
-            const handleOp = (op) => { playSfx('tap'); setEquation(display + ' ' + op + ' '); setDisplay('0'); };
-            const handleClear = () => { playSfx('delete'); setDisplay('0'); setEquation(''); };
-            const handleEq = () => { try { const result = Function('"use strict";return (' + equation + display + ')')(); setDisplay(String(Math.round(result * 100) / 100)); setEquation(''); playSfx('success'); } catch (e) { setDisplay('Error'); } };
+            const [isNewNumber, setIsNewNumber] = useState(true);
+
+            const getRaw = (val) => parseFloat(val.toString().replace(/,/g, ''));
+
+            const updateValue = (newDisplay) => {
+                setDisplay(newDisplay);
+                if (onValueChange) {
+                    onValueChange(getRaw(newDisplay));
+                }
+            };
+
+            const handleNum = (num) => {
+                playSfx('tap');
+                if (isNewNumber) {
+                    updateValue(num === '.' ? '0.' : num);
+                    setIsNewNumber(false);
+                } else {
+                    if (num === '.' && display.includes('.')) return;
+                    const raw = display.replace(/,/g, '') + num;
+                    updateValue(formatNumberInput(raw));
+                }
+            };
+
+            const handleOp = (op) => {
+                playSfx('tap');
+                const rawVal = getRaw(display);
+                setEquation(`${formatNumberInput(rawVal)} ${op}`);
+                setIsNewNumber(true);
+            };
+
+            const handleClear = () => {
+                playSfx('delete');
+                updateValue('0');
+                setEquation('');
+                setIsNewNumber(true);
+            };
+
+            const handleEq = () => {
+                if (!equation) return;
+                try {
+                    const expression = `${equation.replace(/,/g, '')} ${getRaw(display)}`;
+                    const result = Function('"use strict";return (' + expression + ')')();
+                    const rounded = Math.round(result * 100) / 100;
+                    
+                    updateValue(formatNumberInput(rounded));
+                    setEquation('');
+                    setIsNewNumber(true);
+                    playSfx('success');
+                } catch (e) {
+                    setDisplay('Error');
+                    setEquation('');
+                }
+            };
+
             return (
                 <div className="w-full">
-                    <div className="bg-slate-900 p-4 rounded-xl mb-4 text-right"><div className="text-slate-500 text-xs h-4">{equation}</div><div className="text-3xl font-mono text-white overflow-x-auto no-scrollbar">{display}</div></div>
+                    <div className="bg-slate-900 p-4 rounded-xl mb-4 text-right min-h-[5rem] flex flex-col justify-center border border-slate-700">
+                        <div className="text-slate-500 text-sm h-5 font-mono mb-1">{equation}</div>
+                        <div className="text-3xl font-mono text-white overflow-x-auto no-scrollbar">{display}</div>
+                    </div>
                     <div className="calc-grid">
                         {['7','8','9','/'].map(b => <button key={b} onClick={() => isNaN(b) ? handleOp(b) : handleNum(b)} className={`calc-btn ${isNaN(b)?'op':''}`}>{b}</button>)}
                         {['4','5','6','*'].map(b => <button key={b} onClick={() => isNaN(b) ? handleOp(b) : handleNum(b)} className={`calc-btn ${isNaN(b)?'op':''}`}>{b}</button>)}
@@ -235,7 +282,54 @@
                         <button onClick={handleEq} className="calc-btn text-emerald-400">=</button>
                         <button onClick={() => handleOp('+')} className="calc-btn op">+</button>
                     </div>
-                    <button onClick={() => onConfirm(display)} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認更新</button>
+                    {showConfirmBtn && (
+                        <button onClick={() => onConfirm(getRaw(display))} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg shadow-lg shadow-blue-600/20">確認更新</button>
+                    )}
+                </div>
+            );
+        };
+
+        const GoalInputModal = ({ headerTitle, defaultTitle, defaultTarget, linkedAccounts, cash, foreignCash, deadline, onConfirm, onClose, playSfx }) => {
+            const [newTitle, setNewTitle] = useState(defaultTitle || '');
+            const [newTarget, setNewTarget] = useState(defaultTarget || 0);
+            const [newDeadline, setNewDeadline] = useState(deadline || '');
+            const [selectedLinks, setSelectedLinks] = useState(linkedAccounts || []);
+
+            const toggleLink = (id) => {
+                if (id === 'total_assets') {
+                    if (selectedLinks.includes('total_assets')) { setSelectedLinks([]); } else { setSelectedLinks(['total_assets']); }
+                } else {
+                    let newLinks = selectedLinks.filter(lid => lid !== 'total_assets');
+                    if (newLinks.includes(id)) { newLinks = newLinks.filter(lid => lid !== id); } else { newLinks = [...newLinks, id]; }
+                    setSelectedLinks(newLinks);
+                }
+            };
+            const assetGroups = [{ name: '台幣現金', items: cash }, { name: '外幣現金', items: foreignCash }];
+            const isTotalAssets = selectedLinks.includes('total_assets');
+            const totalAssetOption = { id: 'total_assets', name: '💰 總資產 (所有帳戶)' };
+
+            return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
+                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom flex flex-col max-h-[95vh]" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-4 flex-shrink-0"><h3 className="text-lg font-bold text-white">{headerTitle}</h3><button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
+                        <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                            <div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" placeholder="例如：日本旅遊基金" /></div>
+                            
+                            <div>
+                                <label className="text-xs text-slate-400 mb-1 block">目標金額 (計算機)</label>
+                                <Calculator 
+                                    initialValue={newTarget} 
+                                    onValueChange={setNewTarget} 
+                                    showConfirmBtn={false} 
+                                    playSfx={playSfx} 
+                                />
+                            </div>
+
+                            <div><label className="text-xs text-slate-400 mb-1 block">目標期限 (選填)</label><div className="flex gap-2"><input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /><button onClick={() => setNewDeadline('')} className="p-3 bg-slate-900 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-400" title="清除日期"><Icon name="x" className="w-5 h-5" /></button></div></div>
+                            <div><label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label><div className="space-y-3"><div onClick={() => { playSfx('tap'); toggleLink('total_assets'); }} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${isTotalAssets ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className={`text-sm font-bold ${isTotalAssets ? 'text-emerald-400' : 'text-slate-300'}`}>{totalAssetOption.name}</span>{isTotalAssets && <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />}</div>{assetGroups.map(group => (group.items.length > 0 && (<div key={group.name}><div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div><div className="space-y-1">{group.items.map(item => (<div key={item.id} onClick={() => { playSfx('tap'); toggleLink(item.id); }} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>{selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}</div>))}</div></div>)))}</div></div>
+                        </div>
+                        <div className="pt-4 mt-2 border-t border-slate-700 flex-shrink-0"><button onClick={() => { if(newTitle && newTarget) { const finalLinks = selectedLinks.length === 0 ? ['total_assets'] : selectedLinks; onConfirm(newTitle, newTarget, finalLinks, newDeadline); } }} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg shadow-lg shadow-purple-600/20">儲存設定</button></div>
+                    </div>
                 </div>
             );
         };
@@ -247,33 +341,22 @@
             
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                
                 const parseDate = (str) => new Date(str.replace(/-/g, '/')); 
                 let chartHistory = [...history];
                 chartHistory.sort((a, b) => a.date.localeCompare(b.date));
-
                 let rangeData = [];
                 if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
-                     const s = parseDate(customDates.start);
-                     const e = parseDate(customDates.end);
+                     const s = parseDate(customDates.start); const e = parseDate(customDates.end);
                      rangeData = chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
-                } else if (timeRange === '日') { 
-                     rangeData = chartHistory;
-                } else {
-                     rangeData = chartHistory;
-                }
-
+                } else if (timeRange === '日') { rangeData = chartHistory;
+                } else { rangeData = chartHistory; }
                 if (timeRange === '日' || timeRange === 'CUSTOM') return rangeData;
-
                 const groups = {};
                 rangeData.forEach(item => {
                     const d = parseDate(item.date);
                     let key;
-                    if (timeRange === '月') {
-                        key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    } else if (timeRange === '年') {
-                        key = `${d.getFullYear()}`;
-                    }
+                    if (timeRange === '月') { key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; } 
+                    else if (timeRange === '年') { key = `${d.getFullYear()}`; }
                     groups[key] = item; 
                 });
                 return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
@@ -301,15 +384,10 @@
             useEffect(() => {
                 if (chartInstance.current) chartInstance.current.destroy();
                 const ctx = chartRef.current.getContext('2d');
-                
                 let color = '#3b82f6';
                 if (mode === 'cashTW') color = '#10b981'; if (mode === 'stockTW') color = '#0ea5e9'; if (mode === 'cashForeign') color = '#a855f7'; if (mode === 'stockForeign') color = '#ec4899';
-                
                 const gradient = ctx.createLinearGradient(0, 0, 0, 300); 
-                gradient.addColorStop(0, color + '80'); 
-                gradient.addColorStop(1, color + '00');
-                
-                // Styling arrays for highlighting the last point
+                gradient.addColorStop(0, color + '80'); gradient.addColorStop(1, color + '00');
                 const pointRadii = displayData.map((_, i) => i === displayData.length - 1 ? 6 : 3);
                 const pointColors = displayData.map((_, i) => i === displayData.length - 1 ? '#ffffff' : color);
                 const pointBorders = displayData.map((_, i) => i === displayData.length - 1 ? color : color);
@@ -317,63 +395,17 @@
 
                 chartInstance.current = new Chart(ctx, { 
                     type: 'line', 
-                    data: { 
-                        labels: labels, 
-                        datasets: [{ 
-                            data: displayData, 
-                            borderColor: color, 
-                            backgroundColor: gradient, 
-                            borderWidth: 2, 
-                            // Custom Point Styling
-                            pointRadius: pointRadii,
-                            pointBackgroundColor: pointColors,
-                            pointBorderColor: pointBorders,
-                            pointBorderWidth: pointBorderWidths,
-                            pointHitRadius: 20, // Easy to tap anywhere
-                            pointHoverRadius: 6,
-                            fill: true, 
-                            tension: 0.4 
-                        }] 
-                    }, 
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        interaction: { intersect: false, mode: 'index' }, 
-                        plugins: { 
-                            legend: { display: false }, 
-                            tooltip: { 
-                                enabled: true,
-                                callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` }
-                            }
-                        }, 
-                        scales: { 
-                            x: { 
-                                grid: { display: false, drawBorder: false }, 
-                                ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: false } 
-                            }, 
-                            y: { 
-                                display: false, // HIDE Y-Axis
-                                grid: { color: '#1e293b' } 
-                            } 
-                        },
-                        layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } }
-                    } 
+                    data: { labels: labels, datasets: [{ data: displayData, borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: pointRadii, pointBackgroundColor: pointColors, pointBorderColor: pointBorders, pointBorderWidth: pointBorderWidths, pointHitRadius: 20, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
+                    options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false, drawBorder: false }, ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: false } }, y: { display: false, grid: { color: '#1e293b' } } }, layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } } } 
                 });
-                
-                if (scrollContainerRef.current) {
-                    scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
-                }
-
+                if (scrollContainerRef.current) { scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth; }
             }, [filteredData, displayData, labels, mode]);
 
             const calculatedWidth = Math.max(100, (displayData.length / 7) * 100);
-
             return (
                 <div className={`w-full h-48 flex transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
                     <div ref={scrollContainerRef} className="flex-1 h-full overflow-x-auto no-scrollbar relative">
-                        <div style={{ width: `${calculatedWidth}%`, height: '100%' }}>
-                            <canvas ref={chartRef} />
-                        </div>
+                        <div style={{ width: `${calculatedWidth}%`, height: '100%' }}><canvas ref={chartRef} /></div>
                     </div>
                 </div>
             );
@@ -451,204 +483,50 @@
                         <div className="flex justify-between items-center mb-4 flex-shrink-0"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="book-open" className="w-5 h-5 mr-2 text-yellow-400" /> 標準操作 SOP</h3><div className="flex items-center gap-2"><button onClick={() => { playSfx('tap'); setIsEditing(!isEditing); }} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>{isEditing ? '完成' : '編輯'}</button><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div></div>
                         <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg relative group">{isEditing && (<button onClick={() => handleDeleteSection(idx)} className={`absolute top-2 right-2 p-1 transition-colors ${confirmDeleteIdx === idx ? 'text-red-500 bg-red-500/10 rounded font-bold text-xs' : 'text-slate-500 opacity-50 hover:opacity-100 hover:text-red-400'}`}>{confirmDeleteIdx === idx ? '確定?' : <Icon name="trash-2" className="w-4 h-4" />}</button>)}<div onClick={() => isEditing && openInput('editSection', idx, null, section.title)} className={`text-sm font-bold mb-2 flex items-center ${isEditing ? 'text-blue-300 cursor-pointer hover:bg-white/5 p-1 rounded' : 'text-blue-400'}`}>{section.title}{isEditing && <Icon name="edit-2" className="w-3 h-3 ml-2 opacity-50" />}</div><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => (<li key={sIdx} className="flex items-center justify-between group/step py-1"><span onClick={() => isEditing && openInput('editStep', idx, sIdx, step)} className={`flex-1 ${isEditing ? 'cursor-pointer hover:text-white border-b border-dashed border-slate-600 pb-0.5' : ''}`}>{step}</span>{isEditing && (<button onClick={() => handleDeleteStep(idx, sIdx)} className={`ml-2 p-1 transition-colors ${confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? 'text-red-500 font-bold text-[10px]' : 'text-red-400 opacity-50 hover:opacity-100'}`}>{confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? '刪除?' : <Icon name="minus-circle" className="w-3 h-3" />}</button>)}</li>))}{isEditing && (<li className="list-none pt-2"><button onClick={() => openInput('addStep', idx)} className="text-xs text-emerald-400 flex items-center p-1 hover:bg-white/5 rounded"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增步驟</button></li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明</div>}{isEditing && (<button onClick={() => openInput('addSection')} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">+ 新增章節</button>)}</div> {inputModal && (<SopInputModal title={inputModal.type === 'addSection' ? '新增章節' : inputModal.type === 'editSection' ? '編輯章節' : inputModal.type === 'addStep' ? '新增步驟' : '編輯步驟'} defaultValue={inputModal.value || ''} onConfirm={handleInputConfirm} onClose={() => { playSfx('pop'); setInputModal(null); }} />)} </div> </div> ); };
 
-        // --- NEW: Goal Input Modal (V22.2) ---
-        const GoalInputModal = ({ title, target, linkedAccounts, cash, foreignCash, deadline, onConfirm, onClose, playSfx }) => {
-            const [newTitle, setNewTitle] = useState(title || '');
-            const [newTarget, setNewTarget] = useState(target || '');
-            const [newDeadline, setNewDeadline] = useState(deadline || '');
-            const [selectedLinks, setSelectedLinks] = useState(linkedAccounts || []);
-
-            const toggleLink = (id) => {
-                if (id === 'total_assets') {
-                    // Logic: Selecting Total Assets clears everything else
-                    if (selectedLinks.includes('total_assets')) {
-                         setSelectedLinks([]); // Deselect
-                    } else {
-                         setSelectedLinks(['total_assets']);
-                    }
-                } else {
-                    // Logic: Selecting specific account clears Total Assets
-                    let newLinks = selectedLinks.filter(lid => lid !== 'total_assets');
-                    if (newLinks.includes(id)) {
-                        newLinks = newLinks.filter(lid => lid !== id);
-                    } else {
-                        newLinks = [...newLinks, id];
-                    }
-                    setSelectedLinks(newLinks);
-                }
-            };
-
-            const assetGroups = [
-                { name: '台幣現金', items: cash },
-                { name: '外幣現金', items: foreignCash }
-            ];
-
-            const isTotalAssets = selectedLinks.includes('total_assets');
-
-            // Default Option
-            const totalAssetOption = { id: 'total_assets', name: '💰 總資產 (所有帳戶)' };
-
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                            <h3 className="text-lg font-bold text-white">{title ? '編輯目標' : '新增目標'}</h3>
-                            <button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button>
-                        </div>
-                        <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
-                            <div>
-                                <label className="text-xs text-slate-400 mb-1 block">目標名稱</label>
-                                <input 
-                                    type="text" 
-                                    value={newTitle} 
-                                    onChange={(e) => setNewTitle(e.target.value)} 
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" 
-                                    placeholder="例如：日本旅遊基金"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs text-slate-400 mb-1 block">目標金額</label>
-                                <input 
-                                    type="number" 
-                                    value={newTarget} 
-                                    onChange={(e) => setNewTarget(e.target.value)} 
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" 
-                                    placeholder="0"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs text-slate-400 mb-1 block">目標期限 (選填)</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="date" 
-                                        value={newDeadline} 
-                                        onChange={(e) => setNewDeadline(e.target.value)} 
-                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" 
-                                    />
-                                    <button 
-                                        onClick={() => setNewDeadline('')}
-                                        className="p-3 bg-slate-900 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-400"
-                                        title="清除日期"
-                                    >
-                                        <Icon name="x" className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label>
-                                <div className="space-y-3">
-                                    {/* Total Assets Option */}
-                                    <div 
-                                        onClick={() => { playSfx('tap'); toggleLink('total_assets'); }}
-                                        className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${isTotalAssets ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}
-                                    >
-                                        <span className={`text-sm font-bold ${isTotalAssets ? 'text-emerald-400' : 'text-slate-300'}`}>{totalAssetOption.name}</span>
-                                        {isTotalAssets && <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />}
-                                    </div>
-
-                                    {/* Account Groups */}
-                                    {assetGroups.map(group => (
-                                        group.items.length > 0 && (
-                                            <div key={group.name}>
-                                                <div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div>
-                                                <div className="space-y-1">
-                                                    {group.items.map(item => (
-                                                        <div 
-                                                            key={item.id} 
-                                                            onClick={() => { playSfx('tap'); toggleLink(item.id); }}
-                                                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}
-                                                        >
-                                                            <span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>
-                                                            {selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )
-                                    ))}
-                                    {assetGroups.every(g => g.items.length === 0) && (
-                                        <div className="text-xs text-slate-500 text-center py-2">無可用現金帳戶</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="pt-4 mt-2 border-t border-slate-700 flex-shrink-0">
-                             <button 
-                                onClick={() => {
-                                    if(newTitle && newTarget) {
-                                        // If nothing selected, default to total assets for backward compatibility but UI encourages selection
-                                        // Let's enforce selection logic: if empty, default to total assets internally or prompt? 
-                                        // Based on new UX, user can see they haven't selected anything. 
-                                        // Let's default to ['total_assets'] if empty.
-                                        const finalLinks = selectedLinks.length === 0 ? ['total_assets'] : selectedLinks;
-                                        onConfirm(newTitle, newTarget, finalLinks, newDeadline);
-                                    }
-                                }} 
-                                className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg shadow-lg shadow-purple-600/20"
-                            >
-                                儲存設定
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        // --- Modified CircularGoal (V22.2) ---
-        const CircularGoal = ({ goal, current, target, onEdit, onDelete, isPrivacyMode, rates, cash, foreignCash }) => {
+        const CircularGoal = ({ goal, current, target, onEdit, onDelete, isPrivacyMode, rates, cash, foreignCash, index, totalGoals, onMove }) => {
             const calculateProgress = () => {
-                // If linked accounts include 'total_assets' or is empty (legacy), use total net worth
-                if (!goal.linkedAccounts || goal.linkedAccounts.length === 0 || goal.linkedAccounts.includes('total_assets')) {
-                    return current;
-                }
-
+                if (!goal.linkedAccounts || goal.linkedAccounts.length === 0 || goal.linkedAccounts.includes('total_assets')) { return current; }
                 let sum = 0;
-                const checkAdd = (items, isForeign = false) => {
-                    items.forEach(item => {
-                        if (goal.linkedAccounts.includes(item.id)) {
-                            let val = 0;
-                            if (isForeign) { val = item.balance * (rates[item.currency] || 1); } 
-                            else { val = item.balance; }
-                            sum += val;
-                        }
-                    });
-                };
-                checkAdd(cash); 
-                checkAdd(foreignCash, true);
-                
-                // Stocks are removed from goal targets in V22.1 as per user request ("Deposits only")
-                // But keeping logic just in case user wants to re-enable, currently not passed to checkAdd for stocks.
-                
+                const checkAdd = (items, isForeign = false) => { items.forEach(item => { if (goal.linkedAccounts.includes(item.id)) { let val = 0; if (isForeign) { val = item.balance * (rates[item.currency] || 1); } else { val = item.balance; } sum += val; } }); };
+                checkAdd(cash); checkAdd(foreignCash, true);
                 return sum;
             };
-
             const getSourceNames = () => {
                 if (!goal.linkedAccounts || goal.linkedAccounts.length === 0 || goal.linkedAccounts.includes('total_assets')) return "💰 總資產";
-                
                 const names = [];
                 const checkNames = (items) => { items.forEach(item => { if (goal.linkedAccounts.includes(item.id)) names.push(item.name); }); };
                 checkNames(cash); checkNames(foreignCash);
-                
-                if (names.length === 0) return "未知來源";
-                if (names.length <= 2) return names.join(", ");
-                return `${names[0]}... 等 ${names.length} 個`;
+                if (names.length === 0) return "未知來源"; if (names.length <= 2) return names.join(", "); return `${names[0]}... 等 ${names.length} 個`;
             };
-
             const actualCurrent = calculateProgress();
-            const percentage = Math.min(100, Math.max(0, (actualCurrent / target) * 100));
-            const radius = 30; const stroke = 4; const normalizedRadius = radius - stroke * 2; const circumference = normalizedRadius * 2 * Math.PI; const strokeDashoffset = circumference - (percentage / 100) * circumference;
+            const rawPercentage = target > 0 ? (actualCurrent / target) * 100 : 0;
+            const visualPercentage = Math.min(100, Math.max(0, rawPercentage)); // Cap visual fill at 100%
+            const displayPercentage = rawPercentage.toFixed(0); // Allow text to exceed 100%
+            const isCompleted = rawPercentage >= 100;
+
+            const radius = 30; const stroke = 4; const normalizedRadius = radius - stroke * 2; const circumference = normalizedRadius * 2 * Math.PI; const strokeDashoffset = circumference - (visualPercentage / 100) * circumference;
             let daysRemaining = null;
             if (goal.deadline) { const today = new Date(); const due = new Date(goal.deadline); const diffTime = due - today; daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); }
             const sourceText = getSourceNames();
 
             return (
-                <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
+                <div style={{ viewTransitionName: `goal-${goal.id}` }} className={`glass-panel p-4 rounded-xl flex items-center justify-between transition-all ${isCompleted ? 'goal-completed bg-yellow-500/5' : ''}`}>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{goal.title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button></div>
+                        <div className="flex items-center gap-2 mb-1 justify-between pr-2">
+                            <div className="flex items-center gap-2">
+                                <h3 className={`text-sm font-bold ${isCompleted ? 'text-yellow-400' : 'text-white'}`}>{goal.title} {isCompleted && <span className="text-lg">🎉</span>}</h3>
+                                <button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button>
+                                <button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button>
+                            </div>
+                            <div className="flex gap-1">
+                                <button disabled={index === 0} onClick={() => onMove(index, 'up')} className={`p-1 rounded hover:bg-slate-700 ${index === 0 ? 'text-slate-700' : 'text-slate-400'}`}><Icon name="arrow-up" className="w-3 h-3" /></button>
+                                <button disabled={index === totalGoals - 1} onClick={() => onMove(index, 'down')} className={`p-1 rounded hover:bg-slate-700 ${index === totalGoals - 1 ? 'text-slate-700' : 'text-slate-400'}`}><Icon name="arrow-down" className="w-3 h-3" /></button>
+                            </div>
+                        </div>
                         <div className="flex items-center gap-2 mb-1"><span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 max-w-[120px] truncate">{sourceText}</span><span className={`text-[10px] px-1.5 py-0.5 rounded ${daysRemaining !== null && daysRemaining < 0 ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>{daysRemaining === null ? '∞ 無期限' : (daysRemaining < 0 ? `過期 ${Math.abs(daysRemaining)} 天` : `剩 ${daysRemaining} 天`)}</span></div>
-                        <div className="text-xs text-slate-400 mb-0.5">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div><div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(actualCurrent)}</div>
+                        <div className="text-xs text-slate-400 mb-0.5">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div><div className={`text-lg font-mono font-bold ${isCompleted ? 'text-yellow-400' : 'text-blue-400'}`}>{isPrivacyMode ? '****' : formatMoney(actualCurrent)}</div>
                     </div>
-                    <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span></div>
+                    <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={isCompleted ? '#eab308' : (visualPercentage >= 100 ? '#10b981' : '#3b82f6')} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className={`absolute text-xs font-bold ${isCompleted ? 'text-yellow-400' : 'text-white'}`}>{displayPercentage}%</span></div>
                 </div>
             );
         };
@@ -687,6 +565,10 @@
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
             const [sopTaskInput, setSopTaskInput] = useState(null);
+            const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
+            
+            // Get Current Year for Dynamic Display
+            const currentYear = new Date().getFullYear();
 
             useEffect(() => { const seen = localStorage.getItem('ap_tutorial_seen'); if (!seen) { setShowWelcome(true); } }, []);
             useEffect(() => { if (showTutorial) { const step = TUTORIAL_STEPS[tutorialStep]; if (step.tab && step.tab !== activeTab) { setActiveTab(step.tab); } } }, [showTutorial, tutorialStep]);
@@ -736,10 +618,77 @@
             const fetchLiveData = async () => { setIsUpdating(true); playSfx('tap'); const reportLogs = []; const oldNetWorth = totalNetWorth; let newRates = { ...rates }; try { for (const currency of activeCurrencies) { if (currency === 'TWD') continue; try { const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`; const { price: rate } = await fetchYahooData(ticker); if (rate) { const oldRate = rates[currency] || 0; if (Math.abs(rate - oldRate) > 0.001) { reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${rate.toFixed(2)}`, diff: rate - oldRate }); newRates[currency] = rate; } } } catch (e) { console.warn(`Failed to fetch rate for ${currency}`, e); } } setRates(newRates); const newForeignStocks = await Promise.all(foreignStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); const newTwStocks = await Promise.all(twStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); setForeignStocks(newForeignStocks); setTwStocks(newTwStocks); const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0); const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0); const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0); const newTotalNetWorth = totalCashTWD + newTwTotal + newForeignStocksTotal + newForeignCashTotal; if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) { reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth }); } setLastUpdate(new Date().toLocaleTimeString()); setUpdateResults(reportLogs); triggerToast('即時報價更新完成'); playSfx('success'); } catch (error) { console.error(error); } finally { setIsUpdating(false); } };
             const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v22.2_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
-            const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
+            
+            const openEditItem = (itemData) => { 
+                playSfx('pop'); 
+                setDeleteConfirm(false); 
+                setEditItem(itemData);
+            };
+
             const performDelete = (id, type) => { if (!id) return; if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); setEditItem(null); playSfx('delete'); triggerToast('刪除成功'); };
-            const handleAddItem = async (type, v1, v2, v3, v4, v5) => { const id=Math.random().toString(36).substr(2,9); if (type==='cash') { setCash([...cash,{id,name:v1,balance:parseFloat(v2)||0, note: v5, locked:false}]); setAddItemType(null); } else if (type === 'cashForeign') { setForeignCash([...foreignCash, {id, name: v1, balance: parseFloat(v2)||0, currency: v3 || 'USD', note: v5}]); setAddItemType(null); } else { let ticker = v1.toUpperCase(); if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW'; const name = v2 || ticker; const shares = parseFloat(v3)||0; const currency = v4 || (type === 'stockTW' ? 'TWD' : 'USD'); const note = v5; const newItem = {id, ticker, name, shares, price: 0, currency, note}; if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); setAddItemType(null); if (!v2) { try { const { price, name: fetchedName } = await fetchYahooData(ticker); const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: fetchedName || item.name, price: price || 0 }; } return item; })); } catch (e) { console.error("Auto-fetch name failed", e); } } } playSfx('success'); triggerToast('新增成功'); };
-            const handleUpdateValue = (id, type, val, newName, newNote) => { const num = parseFloat(val); const updater = (item) => { if (item.id !== id) return item; let updated = { ...item }; if (type.includes('cash')) updated.balance = num; else updated.shares = num; if (newName !== undefined) updated.name = newName; if (newNote !== undefined) updated.note = newNote; return updated; }; if(type==='cash') setCash(p => p.map(updater)); else if(type==='cashForeign') setForeignCash(p => p.map(updater)); else if(type==='stockTW') setTwStocks(p => p.map(updater)); else setForeignStocks(p => p.map(updater)); setEditItem(null); playSfx('success'); triggerToast('更新成功'); };
+            
+            // New Handlers for Add Item Form
+            const openAddItem = (type) => {
+                playSfx('pop');
+                setAddItemType(type);
+                setAddForm({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
+            };
+
+            const handleAddFormChange = (field, value) => {
+                 setAddForm(prev => ({ ...prev, [field]: value }));
+            };
+
+            const handleAddItemSubmit = async () => {
+                const { main, sub, val, cur, note } = addForm;
+                const type = addItemType;
+
+                if (!main || val === null) return;
+                playSfx('tap');
+
+                const id=Math.random().toString(36).substr(2,9); 
+                if (type==='cash') { 
+                    setCash([...cash,{id,name:main,balance:val||0, note: note, locked:false}]); 
+                    setAddItemType(null); 
+                } else if (type === 'cashForeign') { 
+                    setForeignCash([...foreignCash, {id, name: main, balance: val||0, currency: cur || 'USD', note: note}]); 
+                    setAddItemType(null); 
+                } else { 
+                    let ticker = main.toUpperCase(); 
+                    if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW'; 
+                    const name = sub || ticker; 
+                    const shares = val||0; 
+                    const currency = cur || (type === 'stockTW' ? 'TWD' : 'USD'); 
+                    const newItem = {id, ticker, name, shares, price: 0, currency, note}; 
+                    if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); 
+                    setAddItemType(null); 
+                    if (!sub) { 
+                        try { 
+                            const { price, name: fetchedName } = await fetchYahooData(ticker); 
+                            const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; 
+                            updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: fetchedName || item.name, price: price || 0 }; } return item; })); 
+                        } catch (e) { console.error("Auto-fetch name failed", e); } 
+                    } 
+                } 
+                playSfx('success'); 
+                triggerToast('新增成功'); 
+            };
+
+            const handleUpdateValue = (id, type, val, newName, newNote) => { 
+                const num = parseFloat(val); 
+                const updater = (item) => { 
+                    if (item.id !== id) return item; 
+                    let updated = { ...item }; 
+                    if (type.includes('cash')) updated.balance = num; else updated.shares = num; 
+                    if (newName !== undefined) updated.name = newName; 
+                    if (newNote !== undefined) updated.note = newNote; 
+                    return updated; 
+                }; 
+                if(type==='cash') setCash(p => p.map(updater)); else if(type==='cashForeign') setForeignCash(p => p.map(updater)); else if(type==='stockTW') setTwStocks(p => p.map(updater)); else setForeignStocks(p => p.map(updater)); 
+                setEditItem(null); 
+                playSfx('success'); 
+                triggerToast('更新成功'); 
+            };
+
             const toggleSop = (id) => { playSfx('tap'); setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
             const deleteSop=(id)=> { playSfx('delete'); setSopList(p=>p.filter(s=>s.id!==id)); };
             const addSop = () => { playSfx('pop'); setSopTaskInput({ id: null, text: '' }); };
@@ -771,41 +720,79 @@
             };
 
             const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) { playSfx('delete'); setGoals(prev => prev.filter(g => g.id !== id)); } };
-            const updateRate = (cur, val) => setRates(prev => ({...prev, [cur]: parseFloat(val)}));
-            const deleteRate = (cur) => { if(cur==='USD') return; const newR = {...rates}; delete newR[cur]; setRates(newR); };
-            const moveSection = (index, direction) => { playSfx('tap'); const newOrder = [...walletOrder]; if (direction === 'up' && index > 0) { [newOrder[index], newOrder[index - 1]] = [newOrder[index - 1], newOrder[index]]; } else if (direction === 'down' && index < newOrder.length - 1) { [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]]; } setWalletOrder(newOrder); };
+            
+            // --- Animated Reorder Functions using View Transitions API ---
+            const moveSection = (index, direction) => { 
+                playSfx('tap'); 
+                const newOrder = [...walletOrder]; 
+                let swapIdx = -1;
+                
+                if (direction === 'up' && index > 0) swapIdx = index - 1;
+                else if (direction === 'down' && index < newOrder.length - 1) swapIdx = index + 1;
+
+                if (swapIdx !== -1) {
+                    [newOrder[index], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[index]];
+                    
+                    if (document.startViewTransition) {
+                        document.startViewTransition(() => setWalletOrder(newOrder));
+                    } else {
+                        setWalletOrder(newOrder);
+                    }
+                }
+            };
+
+            const moveGoal = (index, direction) => {
+                playSfx('tap');
+                const newGoals = [...goals];
+                let swapIdx = -1;
+                
+                if (direction === 'up' && index > 0) swapIdx = index - 1;
+                else if (direction === 'down' && index < newGoals.length - 1) swapIdx = index + 1;
+
+                if (swapIdx !== -1) {
+                    [newGoals[index], newGoals[swapIdx]] = [newGoals[swapIdx], newGoals[index]];
+                    
+                    if (document.startViewTransition) {
+                        document.startViewTransition(() => setGoals(newGoals));
+                    } else {
+                        setGoals(newGoals);
+                    }
+                }
+            };
+
             const TabButton = ({ id, label, icon }) => ( <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}><Icon name={icon} className="w-5 h-5 mb-1" />{label}</button> );
             
             // ... [renderSection code is same] ...
             const renderSection = (type, index) => {
+                const style = { viewTransitionName: `section-${type}` };
                 if (type === 'cashTW') {
                     return (
-                        <div key="cashTW" className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><Icon name="wallet" className="w-4 h-4 mr-2" /> 台幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalCashTWD)}</span><div id="wallet-reorder-btns-cashTW" className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button id="wallet-add-cash" onClick={() => { playSfx('pop'); setAddItemType('cash'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                        <div key="cashTW" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
+                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><Icon name="wallet" className="w-4 h-4 mr-2" /> 台幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalCashTWD)}</span><div id="wallet-reorder-btns-cashTW" className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button id="wallet-add-cash" onClick={() => openAddItem('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
                             {cash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200">{item.name}</div><div className="text-[10px] text-slate-500">{item.note || (item.locked ? '🔒 封存' : '🟢 活存')}</div></div><div className="text-sm font-mono text-emerald-400">{displayMoney(item.balance)}</div></div>))}
                         </div>
                     );
                 }
                 if (type === 'cashForeign') {
                     return (
-                        <div key="cashForeign" className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => { playSfx('pop'); setAddItemType('cashForeign'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                        <div key="cashForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
+                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('cashForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button></div></div>
                             {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="flex items-center gap-2"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30">{item.currency}</div><div><div className="text-sm text-slate-200">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div></div><div className="text-right"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500">{formatForeign(item.balance, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
                 if (type === 'stockForeign') {
                     return (
-                        <div key="stockForeign" className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => { playSfx('pop'); setAddItemType('stockForeign'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                        <div key="stockForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
+                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button></div></div>
                             {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono">{formatForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono">@ {formatForeign(item.price, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
                 if (type === 'stockTW') {
                     return (
-                        <div key="stockTW" className="glass-panel rounded-xl overflow-hidden border border-slate-700">
-                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><Icon name="trending-up" className="w-4 h-4 mr-2" /> 台股現貨</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalTwStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => { playSfx('pop'); setAddItemType('stockTW'); }} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                        <div key="stockTW" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
+                            <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><Icon name="trending-up" className="w-4 h-4 mr-2" /> 台股現貨</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalTwStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
                             {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono">{item.ticker} • {item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500 font-mono">@ {displayMoney(item.price)}</div></div></div>))}
                         </div>
                     );
@@ -903,14 +890,17 @@
                                     <button id="goal-add-btn" onClick={() => { playSfx('pop'); setEditGoal({ id: null }); }} className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增專案</button>
                                 </div>
                                 <div className="space-y-3">
-                                    {goals.map(g => (
+                                    {goals.map((g, index) => (
                                         <CircularGoal 
                                             key={g.id} 
                                             goal={g}
-                                            current={totalNetWorth} // Fallback for legacy data or if needed
+                                            index={index}
+                                            totalGoals={goals.length}
+                                            current={totalNetWorth} 
                                             target={g.target} 
                                             onEdit={() => { playSfx('pop'); setEditGoal(g); }} 
                                             onDelete={() => handleDeleteGoal(g.id)} 
+                                            onMove={moveGoal}
                                             isPrivacyMode={isPrivacyMode}
                                             rates={rates}
                                             cash={cash}
@@ -926,8 +916,8 @@
                             {/* Monthly Report */}
                             <div>
                                 <h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3>
-                                <div className="glass-panel rounded-xl p-5 mb-4 border-l-4 border-purple-500">
-                                    <h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 (2026)</h3><div className="text-2xl font-bold text-white mb-2">{ytdStats.diff > 0 ? '+' : ''}{isPrivacyMode ? '****' : formatMoney(ytdStats.diff)}<span className={`text-sm font-normal ml-2 ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{ytdStats.diff > 0 ? '+' : ''}{ytdStats.percent.toFixed(2)}%</span></div>
+                                <div className="glass-panel rounded-xl p-4 mb-4 border border-purple-500/50 shadow-lg shadow-purple-900/10">
+                                    <h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 ({currentYear})</h3><div className="text-2xl font-bold text-white mb-2">{ytdStats.diff > 0 ? '+' : ''}{isPrivacyMode ? '****' : formatMoney(ytdStats.diff)}<span className={`text-sm font-normal ml-2 ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{ytdStats.diff > 0 ? '+' : ''}{ytdStats.percent.toFixed(2)}%</span></div>
                                     <div className="text-xs text-slate-500">累積盈虧 (YTD)</div>
                                 </div>
                                 <div className="space-y-3">
@@ -1009,8 +999,9 @@
                     {/* Goal Input Modal (V22.2) */}
                     {editGoal && (
                         <GoalInputModal 
-                            title={editGoal.id ? '編輯目標' : '新增目標'}
-                            target={editGoal.target}
+                            headerTitle={editGoal.id ? '編輯目標' : '新增目標'}
+                            defaultTitle={editGoal.title}
+                            defaultTarget={editGoal.target}
                             deadline={editGoal.deadline}
                             linkedAccounts={editGoal.linkedAccounts}
                             cash={cash}
@@ -1134,32 +1125,32 @@
                     {showSopModal && <SopDetailsModal sopDetails={sopDetails} setSopDetails={setSopDetails} onClose={() => { playSfx('pop'); setShowSopModal(false); }} playSfx={playSfx} />}
                     {showDateModal && (<DateRangeModal currentDates={customDates} onConfirm={(s, e) => { playSfx('success'); setCustomDates({ start: s, end: e }); setTimeRange('CUSTOM'); setShowDateModal(false); }} onClose={() => { playSfx('pop'); setShowDateModal(false); }} />)}
                     
-                    {/* Add Item Modal */}
-                    {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in"><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom"><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
+                    {/* Add Item Modal (Updated with Formatted Input) */}
+                    {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
                     <div className="space-y-4 mb-6">
                         {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
                             <div><label className="text-xs text-slate-400 mb-1 block">幣別</label>
-                            <select id="addCur" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none">
+                            <select value={addForm.cur} onChange={e => handleAddFormChange('cur', e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none">
                                 {CURRENCY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.code} - {c.name}</option>)}
                             </select></div>
                         )}
-                        <div><label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '帳戶名稱' : '股票代號 (例: 7203.T)'}</label><input id="addMain" type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
-                        {addItemType.includes('stock') && (<div><label className="text-xs text-slate-400 mb-1 block">股票名稱 (選填)</label><input id="addSub" type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>)}
-                        <div><label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '初始金額' : '持有股數'}</label><input id="addVal" type="number" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
-                        <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input id="addNote" type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '帳戶名稱' : '股票代號 (例: 7203.T)'}</label>
+                            <input value={addForm.main} onChange={e => handleAddFormChange('main', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" />
+                        </div>
+                        {addItemType.includes('stock') && (<div><label className="text-xs text-slate-400 mb-1 block">股票名稱 (選填)</label><input value={addForm.sub} onChange={e => handleAddFormChange('sub', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>)}
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '初始金額 (計算機)' : '持有股數 (計算機)'}</label>
+                            <Calculator 
+                                initialValue={0} 
+                                onValueChange={(val) => handleAddFormChange('val', val)} 
+                                showConfirmBtn={false} 
+                                playSfx={playSfx}
+                            />
+                        </div>
+                        <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input value={addForm.note} onChange={e => handleAddFormChange('note', e.target.value)} type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
                     </div>
-                    <button onClick={() => {
-                        playSfx('tap');
-                        const name = document.getElementById('addMain').value; 
-                        const val = document.getElementById('addVal').value; 
-                        const sub = document.getElementById('addSub') ? document.getElementById('addSub').value : ''; 
-                        const cur = document.getElementById('addCur') ? document.getElementById('addCur').value : null;
-                        const note = document.getElementById('addNote').value;
-                        if (name && val) {
-                            if (addItemType.includes('cash')) { handleAddItem(addItemType, name, val, cur, null, note); } 
-                            else { handleAddItem(addItemType, name, sub, val, cur, note); }
-                        }
-                    }} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
+                    <button onClick={handleAddItemSubmit} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
                     
                     {/* Edit Item Modal */}
                     {editItem && (
@@ -1173,22 +1164,14 @@
                                     <input type="text" id="editName" defaultValue={editItem.data.name} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="名稱"/>
                                     <input type="text" id="editNote" defaultValue={editItem.data.note} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 outline-none" placeholder="備註 (例: 活存)"/>
                                 </div>
-                                {editItem.type.includes('cash') ? (
-                                    <>
-                                        <Calculator initialValue={editItem.data.balance} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} playSfx={playSfx}/>
-                                        <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end">
-                                            <button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all ${deleteConfirm ? 'bg-red-600 text-white w-full justify-center' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}><Icon name="trash-2" className="w-4 h-4 mr-2" />{deleteConfirm ? '確定要刪除此帳戶嗎？' : '刪除帳戶'}</button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <>
-                                        <input type="number" id="simpleInput" defaultValue={editItem.data.shares} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-4 px-4 text-2xl text-white font-mono mb-4 focus:border-blue-500 outline-none" autoFocus />
-                                        <div className="flex gap-3">
-                                            <button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-4 px-6 rounded-xl transition-all ${deleteConfirm ? 'bg-red-600 text-white' : 'bg-red-500/10 text-red-500'}`}>{deleteConfirm ? '確定?' : <Icon name="trash-2" className="w-5 h-5" />}</button>
-                                            <button onClick={() => handleUpdateValue(editItem.data.id, editItem.type, document.getElementById('simpleInput').value, document.getElementById('editName').value, document.getElementById('editNote').value)} className="flex-1 py-4 rounded-xl bg-blue-600 text-white font-bold">更新</button>
-                                        </div>
-                                    </>
-                                )}
+                                <Calculator 
+                                    initialValue={editItem.type.includes('cash') ? editItem.data.balance : editItem.data.shares} 
+                                    onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} 
+                                    playSfx={playSfx}
+                                />
+                                <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end">
+                                    <button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all ${deleteConfirm ? 'bg-red-600 text-white w-full justify-center' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}><Icon name="trash-2" className="w-4 h-4 mr-2" />{deleteConfirm ? '確定要刪除此帳戶嗎？' : '刪除帳戶'}</button>
+                                </div>
                             </div>
                         </div>
                     )}
