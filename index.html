@@ -51,6 +51,9 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        // --- VERSION CONTROL ---
+        const APP_VERSION = '23.0.0';
+
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
         // --- 預設資料 ---
@@ -153,6 +156,20 @@
             <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                 <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold">{message}</span>
+            </div>
+        );
+
+        // --- Update Notification Component ---
+        const UpdateNotification = ({ show, onUpdate, newVersion }) => (
+            <div className={`fixed bottom-24 right-4 bg-blue-600 text-white p-4 rounded-xl shadow-2xl border border-blue-400 z-[500] transition-all duration-500 transform ${show ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'} max-w-[280px]`}>
+                <div className="flex items-start gap-3">
+                    <div className="bg-white/20 p-2 rounded-full"><Icon name="arrow-up-circle" className="w-6 h-6 text-white" /></div>
+                    <div>
+                        <h4 className="font-bold text-sm mb-1">發現新版本 {newVersion}</h4>
+                        <p className="text-xs text-blue-100 mb-3 leading-tight">AssetPilot 已發布更新！點擊下方按鈕以套用新功能。</p>
+                        <button onClick={onUpdate} className="bg-white text-blue-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors w-full shadow-sm">立即重新整理</button>
+                    </div>
+                </div>
             </div>
         );
 
@@ -326,7 +343,7 @@
                             </div>
 
                             <div><label className="text-xs text-slate-400 mb-1 block">目標期限 (選填)</label><div className="flex gap-2"><input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /><button onClick={() => setNewDeadline('')} className="p-3 bg-slate-900 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-400" title="清除日期"><Icon name="x" className="w-5 h-5" /></button></div></div>
-                            <div><label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label><div className="space-y-3"><div onClick={() => { playSfx('tap'); toggleLink('total_assets'); }} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${isTotalAssets ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className={`text-sm font-bold ${isTotalAssets ? 'text-emerald-400' : 'text-slate-300'}`}>{totalAssetOption.name}</span>{isTotalAssets && <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />}</div>{assetGroups.map(group => (group.items.length > 0 && (<div key={group.name}><div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div><div className="space-y-1">{group.items.map(item => (<div key={item.id} onClick={() => { playSfx('tap'); toggleLink(item.id); }} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>{selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}</div>))}</div></div>)))}</div></div>
+                            <div><label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label><div className="space-y-3"><div onClick={() => { playSfx('tap'); toggleLink('total_assets'); }} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${isTotalAssets ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className={`text-sm font-bold ${isTotalAssets ? 'text-emerald-400' : 'text-slate-400'}`}>{totalAssetOption.name}</span>{isTotalAssets && <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />}</div>{assetGroups.map(group => (group.items.length > 0 && (<div key={group.name}><div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div><div className="space-y-1">{group.items.map(item => (<div key={item.id} onClick={() => { playSfx('tap'); toggleLink(item.id); }} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>{selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}</div>))}</div></div>)))}</div></div>
                         </div>
                         <div className="pt-4 mt-2 border-t border-slate-700 flex-shrink-0"><button onClick={() => { if(newTitle && newTarget) { const finalLinks = selectedLinks.length === 0 ? ['total_assets'] : selectedLinks; onConfirm(newTitle, newTarget, finalLinks, newDeadline); } }} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg shadow-lg shadow-purple-600/20">儲存設定</button></div>
                     </div>
@@ -566,9 +583,39 @@
             const [updateResults, setUpdateResults] = useState(null);
             const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
+            const [updateAvailable, setUpdateAvailable] = useState(null); // Version string if update available
             
             // Get Current Year for Dynamic Display
             const currentYear = new Date().getFullYear();
+
+            // Auto-update check
+            useEffect(() => {
+                const checkUpdate = async () => {
+                    try {
+                        // Fetch the current URL (assuming it's index.html on GitHub Pages) to get latest content
+                        const response = await fetch(window.location.href, { cache: "no-store" });
+                        if (response.ok) {
+                            const text = await response.text();
+                            // Regex to find the version constant in the source
+                            const match = text.match(/const APP_VERSION = '([^']+)';/);
+                            if (match && match[1]) {
+                                const remoteVersion = match[1];
+                                if (remoteVersion !== APP_VERSION) {
+                                    // A simple check: if version strings differ, show update
+                                    setUpdateAvailable(remoteVersion);
+                                    console.log(`New version found: ${remoteVersion}`);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.log("Auto-update check failed", e);
+                    }
+                };
+                
+                // Delay check slightly to not impact initial render performance
+                const timer = setTimeout(checkUpdate, 2000);
+                return () => clearTimeout(timer);
+            }, []);
 
             useEffect(() => { const seen = localStorage.getItem('ap_tutorial_seen'); if (!seen) { setShowWelcome(true); } }, []);
             useEffect(() => { if (showTutorial) { const step = TUTORIAL_STEPS[tutorialStep]; if (step.tab && step.tab !== activeTab) { setActiveTab(step.tab); } } }, [showTutorial, tutorialStep]);
@@ -947,6 +994,13 @@
                     {/* Toast */}
                     <Toast message={toast.message} show={toast.show} />
 
+                    {/* Update Notification */}
+                    <UpdateNotification 
+                        show={!!updateAvailable} 
+                        newVersion={updateAvailable} 
+                        onUpdate={() => window.location.reload()} 
+                    />
+
                     {/* Welcome Modal */}
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
 
@@ -1116,7 +1170,7 @@
                                     </div>
                                 </div>
                                 <div className="text-center mt-6 pt-4 border-t border-slate-700/50">
-                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v22.2</div>
+                                    <div className="text-[10px] text-slate-600 font-mono tracking-widest">v{APP_VERSION}</div>
                                     <div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div>
                                 </div>
                             </div>
