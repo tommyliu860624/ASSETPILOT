@@ -143,7 +143,7 @@
             { targetId: "goal-add-btn", title: "分析：設定目標", content: "現在可以設定「專款專用」的目標了！指定特定帳戶或股票，設定截止日期，讓理財計畫更務實。", tab: "analysis" },
             { targetId: "header-refresh", title: "即時更新", content: "回到頂部工具列。點擊此按鈕，系統會立即連線更新所有「即時股價」與「匯率」，計算最新身價。", tab: "dashboard" },
             { targetId: "header-privacy", title: "隱私保護", content: "在公共場合不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字。", tab: "dashboard" },
-            { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱、重置系統或重播此教學。準備好開始了嗎？", tab: "dashboard" }
+            { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
         ];
 
         // --- Components ---
@@ -215,40 +215,27 @@
             );
         };
 
-        // --- NEW: Goal Input Modal (V22.1 Update) ---
-        const GoalInputModal = ({ title, target, linkedAccounts, cash, twStocks, foreignStocks, foreignCash, deadline, onConfirm, onClose, playSfx }) => {
+        // --- NEW: Goal Input Modal ---
+        const GoalInputModal = ({ title, target, linkedAccounts, cash, foreignCash, deadline, onConfirm, onClose, playSfx }) => {
             const [newTitle, setNewTitle] = useState(title || '');
             const [newTarget, setNewTarget] = useState(target || '');
             const [newDeadline, setNewDeadline] = useState(deadline || '');
             const [selectedLinks, setSelectedLinks] = useState(linkedAccounts || []);
 
             const toggleLink = (id) => {
-                if (id === 'ALL') {
-                    // Exclusive selection for Total Assets
-                    setSelectedLinks([]);
+                if (selectedLinks.includes(id)) {
+                    setSelectedLinks(selectedLinks.filter(lid => lid !== id));
                 } else {
-                    // Exclusive selection for specific account (remove ALL implicit)
-                    let newLinks = [];
-                    
-                    if (selectedLinks.includes(id)) {
-                        // Deselecting specific account
-                        newLinks = selectedLinks.filter(lid => lid !== id);
-                    } else {
-                        // Selecting new specific account
-                        newLinks = [...selectedLinks, id];
-                    }
-                    setSelectedLinks(newLinks);
+                    setSelectedLinks([...selectedLinks, id]);
                 }
             };
 
-            const isTotalAssets = selectedLinks.length === 0;
-
             const assetGroups = [
                 { name: '台幣現金', items: cash },
-                { name: '外幣現金', items: foreignCash },
-                { name: '台股現貨', items: twStocks },
-                { name: '海外投資', items: foreignStocks }
+                { name: '外幣現金', items: foreignCash }
             ];
+
+            const isTotalAssets = selectedLinks.length === 0;
 
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
@@ -280,57 +267,52 @@
                             </div>
                             <div>
                                 <label className="text-xs text-slate-400 mb-1 block">目標期限 (選填)</label>
-                                <input 
-                                    type="date" 
-                                    value={newDeadline} 
-                                    onChange={(e) => setNewDeadline(e.target.value)} 
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" 
-                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="date" 
+                                        value={newDeadline} 
+                                        onChange={(e) => setNewDeadline(e.target.value)} 
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" 
+                                    />
+                                    <button 
+                                        onClick={() => setNewDeadline('')}
+                                        className="p-3 bg-slate-900 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-400"
+                                        title="清除日期"
+                                    >
+                                        <Icon name="x" className="w-5 h-5" />
+                                    </button>
+                                </div>
                             </div>
                             <div>
-                                <label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label>
-                                <div className="space-y-2">
-                                    {/* Total Assets Option */}
-                                    <div 
-                                        onClick={() => { playSfx('tap'); toggleLink('ALL'); }}
-                                        className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isTotalAssets ? 'bg-emerald-500/20 border-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-slate-800 border-slate-700 hover:border-slate-500'}`}
-                                    >
-                                        <span className={`text-sm ${isTotalAssets ? 'text-emerald-100 font-bold' : 'text-slate-400'}`}>全資產模式 (預設)</span>
-                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isTotalAssets ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
-                                            {isTotalAssets && <Icon name="check" className="w-3 h-3 text-white" />}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Specific Accounts Divider */}
-                                    <div className="flex items-center gap-2 my-2">
-                                        <div className="h-px bg-slate-700 flex-1"></div>
-                                        <span className="text-[10px] text-slate-500 uppercase">或指定帳戶</span>
-                                        <div className="h-px bg-slate-700 flex-1"></div>
-                                    </div>
-
-                                    <div className={`space-y-3 transition-opacity duration-300 ${isTotalAssets ? 'opacity-50' : 'opacity-100'}`}>
-                                        {assetGroups.map(group => (
-                                            group.items.length > 0 && (
-                                                <div key={group.name}>
-                                                    <div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div>
-                                                    <div className="space-y-1">
-                                                        {group.items.map(item => (
-                                                            <div 
-                                                                key={item.id} 
-                                                                onClick={() => { playSfx('tap'); toggleLink(item.id); }}
-                                                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}
-                                                            >
-                                                                <span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>
-                                                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${selectedLinks.includes(item.id) ? 'bg-blue-500 border-blue-500' : 'border-slate-600'}`}>
-                                                                    {selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-white" />}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-xs text-slate-400">綁定資金來源</label>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${isTotalAssets ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-blue-500 text-blue-400 bg-blue-500/10'}`}>
+                                        {isTotalAssets ? '✅ 目前模式：追蹤總資產' : '🔹 專案模式'}
+                                    </span>
+                                </div>
+                                <div className="space-y-3">
+                                    {assetGroups.map(group => (
+                                        group.items.length > 0 && (
+                                            <div key={group.name}>
+                                                <div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div>
+                                                <div className="space-y-1">
+                                                    {group.items.map(item => (
+                                                        <div 
+                                                            key={item.id} 
+                                                            onClick={() => { playSfx('tap'); toggleLink(item.id); }}
+                                                            className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}
+                                                        >
+                                                            <span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>
+                                                            {selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            )
-                                        ))}
-                                    </div>
+                                            </div>
+                                        )
+                                    ))}
+                                    {assetGroups.every(g => g.items.length === 0) && (
+                                        <div className="text-xs text-slate-500 text-center py-2">無可用現金帳戶</div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -351,7 +333,103 @@
             );
         };
 
-        // ... [Calculator, AssetTrendChart, AllocationBar, CircularGoal, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
+        // --- Modified CircularGoal ---
+        const CircularGoal = ({ goal, current, target, onEdit, onDelete, isPrivacyMode, rates, cash, foreignCash }) => {
+            
+            const calculateProgress = () => {
+                // If no linked accounts, use total net worth
+                if (!goal.linkedAccounts || goal.linkedAccounts.length === 0) {
+                    return current;
+                }
+
+                let sum = 0;
+                // Helper to check and add
+                const checkAdd = (items, isForeign = false) => {
+                    items.forEach(item => {
+                        if (goal.linkedAccounts.includes(item.id)) {
+                            let val = 0;
+                            if (isForeign) {
+                                val = item.balance * (rates[item.currency] || 1);
+                            } else {
+                                val = item.balance;
+                            }
+                            sum += val;
+                        }
+                    });
+                };
+
+                checkAdd(cash);
+                checkAdd(foreignCash, true);
+
+                return sum;
+            };
+
+            // Get source names for display
+            const getSourceNames = () => {
+                if (!goal.linkedAccounts || goal.linkedAccounts.length === 0) return "全資產";
+                
+                const names = [];
+                const checkNames = (items) => {
+                    items.forEach(item => {
+                        if (goal.linkedAccounts.includes(item.id)) names.push(item.name);
+                    });
+                };
+                checkNames(cash);
+                checkNames(foreignCash);
+                
+                if (names.length === 0) return "未知來源";
+                if (names.length <= 2) return names.join(", ");
+                return `${names[0]}... 等 ${names.length} 個`;
+            };
+
+            const actualCurrent = calculateProgress();
+            const percentage = Math.min(100, Math.max(0, (actualCurrent / target) * 100));
+            const radius = 30;
+            const stroke = 4;
+            const normalizedRadius = radius - stroke * 2;
+            const circumference = normalizedRadius * 2 * Math.PI;
+            const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+            // Days remaining logic
+            let daysRemaining = null;
+            if (goal.deadline) {
+                const today = new Date();
+                const due = new Date(goal.deadline);
+                const diffTime = due - today;
+                daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+            }
+
+            const sourceText = getSourceNames();
+
+            return (
+                <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-sm font-bold text-white">{goal.title}</h3>
+                            <button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button>
+                            <button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button>
+                        </div>
+                        <div className="flex items-center gap-2 mb-1">
+                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 max-w-[120px] truncate">{sourceText}</span>
+                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${daysRemaining !== null && daysRemaining < 0 ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>
+                                 {daysRemaining === null ? '∞ 無期限' : (daysRemaining < 0 ? `過期 ${Math.abs(daysRemaining)} 天` : `剩 ${daysRemaining} 天`)}
+                             </span>
+                        </div>
+                        <div className="text-xs text-slate-400 mb-0.5">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div>
+                        <div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(actualCurrent)}</div>
+                    </div>
+                    <div className="relative w-20 h-20 flex items-center justify-center">
+                        <svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]">
+                            <circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" />
+                            <circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" />
+                        </svg>
+                        <span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span>
+                    </div>
+                </div>
+            );
+        };
+
+        // ... [Calculator, AssetTrendChart, AllocationBar, UpdateResultModal, DateRangeModal, SopInputModal, SopDetailsModal remain the same] ...
         const Calculator = ({ initialValue, onConfirm, playSfx }) => {
             const [display, setDisplay] = useState(String(initialValue));
             const [equation, setEquation] = useState('');
@@ -537,41 +615,6 @@
             );
         };
 
-        const CircularGoal = ({ goal, current, target, onEdit, onDelete, isPrivacyMode, rates, cash, twStocks, foreignStocks, foreignCash }) => {
-            const calculateProgress = () => {
-                if (!goal.linkedAccounts || goal.linkedAccounts.length === 0) { return current; }
-                let sum = 0;
-                const checkAdd = (items, isForeign = false, isStock = false) => {
-                    items.forEach(item => {
-                        if (goal.linkedAccounts.includes(item.id)) {
-                            let val = 0;
-                            if (isForeign) { val = isStock ? item.shares * item.price * (rates[item.currency] || 1) : item.balance * (rates[item.currency] || 1); } 
-                            else { val = isStock ? item.shares * item.price : item.balance; }
-                            sum += val;
-                        }
-                    });
-                };
-                checkAdd(cash); checkAdd(twStocks, false, true); checkAdd(foreignCash, true); checkAdd(foreignStocks, true, true);
-                return sum;
-            };
-            const actualCurrent = calculateProgress();
-            const percentage = Math.min(100, Math.max(0, (actualCurrent / target) * 100));
-            const radius = 30; const stroke = 4; const normalizedRadius = radius - stroke * 2; const circumference = normalizedRadius * 2 * Math.PI; const strokeDashoffset = circumference - (percentage / 100) * circumference;
-            let daysRemaining = null;
-            if (goal.deadline) {
-                const today = new Date(); const due = new Date(goal.deadline); const diffTime = due - today; daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            }
-            const sourceText = (!goal.linkedAccounts || goal.linkedAccounts.length === 0) ? "全資產" : "指定資產";
-            return (
-                <div className="glass-panel p-4 rounded-xl flex items-center justify-between">
-                    <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h3 className="text-sm font-bold text-white">{goal.title}</h3><button onClick={onEdit} className="text-slate-500 hover:text-blue-400"><Icon name="edit-2" className="w-3 h-3" /></button><button onClick={onDelete} className="text-slate-500 hover:text-red-400"><Icon name="trash" className="w-3 h-3" /></button></div>
-                    <div className="flex items-center gap-2 mb-1"><span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">{sourceText}</span>{daysRemaining !== null && (<span className={`text-[10px] px-1.5 py-0.5 rounded ${daysRemaining < 0 ? 'bg-red-900/50 text-red-300' : 'bg-blue-900/50 text-blue-300'}`}>{daysRemaining < 0 ? `過期 ${Math.abs(daysRemaining)} 天` : `剩 ${daysRemaining} 天`}</span>)}</div>
-                    <div className="text-xs text-slate-400 mb-0.5">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div><div className="text-lg font-mono text-blue-400 font-bold">{isPrivacyMode ? '****' : formatMoney(actualCurrent)}</div></div>
-                    <div className="relative w-20 h-20 flex items-center justify-center"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={percentage >= 100 ? '#10b981' : '#3b82f6'} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className="absolute text-xs font-bold text-white">{percentage.toFixed(0)}%</span></div>
-                </div>
-            );
-        };
-
         const UpdateResultModal = ({ results, onClose, isPrivacyMode }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
@@ -608,7 +651,7 @@
 
         const SopDetailsModal = ({ sopDetails, setSopDetails, onClose, playSfx }) => {
             const [isEditing, setIsEditing] = useState(false);
-            const [inputModal, setInputModal] = useState(null); // { type, sectionIdx, stepIdx, value }
+            const [inputModal, setInputModal] = useState(null); 
             const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); 
             const [confirmDeleteStep, setConfirmDeleteStep] = useState(null); 
 
@@ -640,7 +683,7 @@
                         <div className="flex justify-between items-center mb-4 flex-shrink-0"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="book-open" className="w-5 h-5 mr-2 text-yellow-400" /> 標準操作 SOP</h3><div className="flex items-center gap-2"><button onClick={() => { playSfx('tap'); setIsEditing(!isEditing); }} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>{isEditing ? '完成' : '編輯'}</button><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div></div>
                         <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg relative group">{isEditing && (<button onClick={() => handleDeleteSection(idx)} className={`absolute top-2 right-2 p-1 transition-colors ${confirmDeleteIdx === idx ? 'text-red-500 bg-red-500/10 rounded font-bold text-xs' : 'text-slate-500 opacity-50 hover:opacity-100 hover:text-red-400'}`}>{confirmDeleteIdx === idx ? '確定?' : <Icon name="trash-2" className="w-4 h-4" />}</button>)}<div onClick={() => isEditing && openInput('editSection', idx, null, section.title)} className={`text-sm font-bold mb-2 flex items-center ${isEditing ? 'text-blue-300 cursor-pointer hover:bg-white/5 p-1 rounded' : 'text-blue-400'}`}>{section.title}{isEditing && <Icon name="edit-2" className="w-3 h-3 ml-2 opacity-50" />}</div><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => (<li key={sIdx} className="flex items-center justify-between group/step py-1"><span onClick={() => isEditing && openInput('editStep', idx, sIdx, step)} className={`flex-1 ${isEditing ? 'cursor-pointer hover:text-white border-b border-dashed border-slate-600 pb-0.5' : ''}`}>{step}</span>{isEditing && (<button onClick={() => handleDeleteStep(idx, sIdx)} className={`ml-2 p-1 transition-colors ${confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? 'text-red-500 font-bold text-[10px]' : 'text-red-400 opacity-50 hover:opacity-100'}`}>{confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? '刪除?' : <Icon name="minus-circle" className="w-3 h-3" />}</button>)}</li>))}{isEditing && (<li className="list-none pt-2"><button onClick={() => openInput('addStep', idx)} className="text-xs text-emerald-400 flex items-center p-1 hover:bg-white/5 rounded"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增步驟</button></li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明</div>}{isEditing && (<button onClick={() => openInput('addSection')} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">+ 新增章節</button>)}</div> {inputModal && (<SopInputModal title={inputModal.type === 'addSection' ? '新增章節' : inputModal.type === 'editSection' ? '編輯章節' : inputModal.type === 'addStep' ? '新增步驟' : '編輯步驟'} defaultValue={inputModal.value || ''} onConfirm={handleInputConfirm} onClose={() => { playSfx('pop'); setInputModal(null); }} />)} </div> </div> ); };
 
-        // --- 主程式 ---
+        // ---主程式 (Updated for V22.1) ---
         const App = () => {
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
@@ -733,32 +776,8 @@
             const addSop = () => { playSfx('pop'); setSopTaskInput({ id: null, text: '' }); };
             const editSopText = (id, text) => { playSfx('pop'); setSopTaskInput({ id, text }); };
             const handleSaveSopTask = (text) => { if (text.trim() === '') return; if (sopTaskInput.id) { setSopList(prev => prev.map(s => s.id === sopTaskInput.id ? { ...s, text } : s)); triggerToast('任務已更新'); } else { setSopList([...sopList, { id: Date.now(), text, completed: false }]); triggerToast('任務已新增'); } setSopTaskInput(null); playSfx('success'); };
-
-            // === V22.1 UPDATED GOAL LOGIC (With explicit Total Assets option) ===
-            const handleAddGoal = (title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals([...goals, { 
-                    id: Date.now(), 
-                    title, 
-                    target: parseFloat(target), 
-                    linkedAccounts: linkedAccounts || [],
-                    deadline: deadline || null
-                }]); 
-            };
-            
-            const handleUpdateGoal = (id, title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals(prev => prev.map(g => g.id === id ? { 
-                    ...g, 
-                    title, 
-                    target: parseFloat(target),
-                    linkedAccounts: linkedAccounts || [],
-                    deadline: deadline || null
-                } : g)); 
-                setEditGoal(null); 
-            };
-            // ================================
-
+            const handleAddGoal = (title, target, linkedAccounts, deadline) => { playSfx('success'); setGoals([...goals, { id: Date.now(), title, target: parseFloat(target), linkedAccounts: linkedAccounts || [], deadline: deadline || null }]); };
+            const handleUpdateGoal = (id, title, target, linkedAccounts, deadline) => { playSfx('success'); setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target), linkedAccounts: linkedAccounts || [], deadline: deadline || null } : g)); setEditGoal(null); };
             const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) { playSfx('delete'); setGoals(prev => prev.filter(g => g.id !== id)); } };
             const updateRate = (cur, val) => setRates(prev => ({...prev, [cur]: parseFloat(val)}));
             const deleteRate = (cur) => { if(cur==='USD') return; const newR = {...rates}; delete newR[cur]; setRates(newR); };
@@ -996,7 +1015,7 @@
                         </div>
                     )}
 
-                    {/* Goal Input Modal (V22.1) */}
+                    {/* Goal Input Modal (V22.0) */}
                     {editGoal && (
                         <GoalInputModal 
                             title={editGoal.id ? '編輯目標' : '新增目標'}
@@ -1191,4 +1210,3 @@
     </script>
 </body>
 </html>
-
