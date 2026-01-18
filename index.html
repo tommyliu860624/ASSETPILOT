@@ -53,7 +53,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.1.0';
+        const APP_VERSION = '23.1.1';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -413,7 +413,7 @@
 
                 chartInstance.current = new Chart(ctx, { 
                     type: 'line', 
-                    data: { labels: labels, datasets: [{ data: displayData, borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: pointRadii, pointBackgroundColor: pointColors, pointBorderColor: pointBorders, pointBorderWidth: pointBorderWidths, pointHitRadius: 20, pointHoverRadius: 6, fill: true, tension: 0.4 }] }, 
+                    data: { labels: labels, datasets: [{ data: displayData, borderColor: color, backgroundColor: gradient, borderWidth: 2, pointRadius: pointRadii, pointBackgroundColor: pointColors, pointBorderColor: pointBorders, pointBorderWidth: pointBorderWidths, pointHitRadius: 20, pointHoverRadius: 6, fill: true, tension: 0 }] }, 
                     options: { responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' }, plugins: { legend: { display: false }, tooltip: { enabled: true, callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` } } }, scales: { x: { grid: { display: false, drawBorder: false }, ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: false } }, y: { display: false, grid: { color: '#1e293b' } } }, layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } } } 
                 });
                 if (scrollContainerRef.current) { scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth; }
