@@ -6,6 +6,7 @@
     <title>AssetPilot</title>
     
     <!-- PWA Settings -->
+    <!-- FIXED: Changed name to "AssetPilot" -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -52,7 +53,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.0.0';
+        const APP_VERSION = '23.1.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -592,16 +593,13 @@
             useEffect(() => {
                 const checkUpdate = async () => {
                     try {
-                        // Fetch the current URL (assuming it's index.html on GitHub Pages) to get latest content
                         const response = await fetch(window.location.href, { cache: "no-store" });
                         if (response.ok) {
                             const text = await response.text();
-                            // Regex to find the version constant in the source
                             const match = text.match(/const APP_VERSION = '([^']+)';/);
                             if (match && match[1]) {
                                 const remoteVersion = match[1];
                                 if (remoteVersion !== APP_VERSION) {
-                                    // A simple check: if version strings differ, show update
                                     setUpdateAvailable(remoteVersion);
                                     console.log(`New version found: ${remoteVersion}`);
                                 }
@@ -611,8 +609,6 @@
                         console.log("Auto-update check failed", e);
                     }
                 };
-                
-                // Delay check slightly to not impact initial render performance
                 const timer = setTimeout(checkUpdate, 2000);
                 return () => clearTimeout(timer);
             }, []);
@@ -661,9 +657,46 @@
 
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
-            const fetchYahooData = async (ticker) => { const timestamp = new Date().getTime(); try { const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`; const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`; const res = await fetch(proxyUrl, { cache: "no-store" }); const data = await res.json(); const meta = data?.chart?.result?.[0]?.meta; return { price: meta?.regularMarketPrice || null, name: meta?.longName || meta?.shortName || null }; } catch (e) { console.error(`Failed to fetch ${ticker}`, e); return { price: null, name: null }; } };
+            
+            // --- UPDATED DATA FETCHING LOGIC (More Robust) ---
+            const fetchYahooData = async (ticker) => { 
+                const timestamp = new Date().getTime(); 
+                // Primary Proxy: corsproxy.io
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
+                
+                // Helper to try fetch
+                const tryFetch = async (proxyUrl) => {
+                    const res = await fetch(proxyUrl, { cache: "no-store" });
+                    if (!res.ok) throw new Error('Network response was not ok');
+                    const data = await res.json();
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    return { 
+                        price: meta?.regularMarketPrice || null, 
+                        name: meta?.longName || meta?.shortName || null 
+                    };
+                };
+
+                try {
+                    return await tryFetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
+                } catch (e) {
+                    console.warn(`Primary proxy failed for ${ticker}, trying backup...`);
+                    try {
+                        // Backup Proxy: allorigins
+                        // Note: allorigins returns JSON wrapped in "contents", we need raw if possible or parse contents
+                        const backupRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
+                        const backupJson = await backupRes.json();
+                        const data = JSON.parse(backupJson.contents);
+                        const meta = data?.chart?.result?.[0]?.meta;
+                        return { price: meta?.regularMarketPrice || null, name: meta?.longName || meta?.shortName || null };
+                    } catch (e2) {
+                        console.error(`All proxies failed for ${ticker}`, e2);
+                        return { price: null, name: null };
+                    }
+                }
+            };
+
             const fetchLiveData = async () => { setIsUpdating(true); playSfx('tap'); const reportLogs = []; const oldNetWorth = totalNetWorth; let newRates = { ...rates }; try { for (const currency of activeCurrencies) { if (currency === 'TWD') continue; try { const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`; const { price: rate } = await fetchYahooData(ticker); if (rate) { const oldRate = rates[currency] || 0; if (Math.abs(rate - oldRate) > 0.001) { reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${rate.toFixed(2)}`, diff: rate - oldRate }); newRates[currency] = rate; } } } catch (e) { console.warn(`Failed to fetch rate for ${currency}`, e); } } setRates(newRates); const newForeignStocks = await Promise.all(foreignStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); const newTwStocks = await Promise.all(twStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); setForeignStocks(newForeignStocks); setTwStocks(newTwStocks); const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0); const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0); const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0); const newTotalNetWorth = totalCashTWD + newTwTotal + newForeignStocksTotal + newForeignCashTotal; if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) { reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth }); } setLastUpdate(new Date().toLocaleTimeString()); setUpdateResults(reportLogs); triggerToast('即時報價更新完成'); playSfx('success'); } catch (error) { console.error(error); } finally { setIsUpdating(false); } };
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v22.2_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.1_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
             const openEditItem = (itemData) => { 
