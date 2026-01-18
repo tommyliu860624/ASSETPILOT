@@ -434,6 +434,49 @@
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false, 
+                        interaction: { intersect: false, mode: 'index' }, 
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                enabled: true,
+                                callbacks: { label: (ctx) => ` ${new Intl.NumberFormat('zh-TW', {style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0}).format(ctx.parsed.y).replace('TWD', 'NTD')}` }
+                            }
+                        }, 
+                        scales: { 
+                            x: { 
+                                grid: { display: false, drawBorder: false }, 
+                                ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: false } 
+                            }, 
+                            y: { display: false, grid: { color: '#1e293b' } } 
+                        },
+                        layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } }
+                    } 
+                });
+                
+                if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+                }
+
+            }, [filteredData, displayData, labels, mode]);
+
+            const calculatedWidth = Math.max(100, (displayData.length / 7) * 100);
+
+            return (
+                <div className={`w-full h-48 flex transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
+                    <div ref={scrollContainerRef} className="flex-1 h-full overflow-x-auto no-scrollbar relative">
+                        <div style={{ width: `${calculatedWidth}%`, height: '100%' }}>
+                            <canvas ref={chartRef} />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const AllocationBar = ({ cash, tw, us, total, isPrivacyMode, playSfx }) => {
+            if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
+            const pCash = (cash / total) * 100; const pTw = (tw / total) * 100; const pUs = (us / total) * 100;
+            const [selected, setSelected] = useState(null);
+            const displayVal = (val) => isPrivacyMode ? '****' : formatMoney(val);
             const handleSelect = (type) => { playSfx('tap'); setSelected(selected === type ? null : type); };
             return (
                 <div className={`w-full transition-all duration-300 ${isPrivacyMode ? 'blur-sm' : ''}`}>
