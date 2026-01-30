@@ -52,7 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '24.0.0'; // Major Update: Stooq Engine
+        const APP_VERSION = '25.0.0'; // Major Update: Resilient Proxy Rotation Engine
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -498,7 +498,7 @@
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">{results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : results.map((item, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs"><span className="text-slate-300 font-mono">{item.label}</span><span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>{isPrivacyMode && item.label.includes('資產') ? '****' : item.value}</span></div>))}</div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">{results.length === 0 ? <p className="text-slate-400 text-center text-sm">本次更新無顯著價格變動</p> : results.map((item, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs"><span className="text-slate-300 font-mono">{item.label}</span><span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>{isPrivacyMode && item.label.includes('資產') ? '****' : item.value}</span></div>))}</div>
                         <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
                     </div>
                 </div>
@@ -642,13 +642,10 @@
                                 const remoteVersion = match[1];
                                 if (remoteVersion !== APP_VERSION) {
                                     setUpdateAvailable(remoteVersion);
-                                    console.log(`New version found: ${remoteVersion}`);
                                 }
                             }
                         }
-                    } catch (e) {
-                        console.log("Auto-update check failed", e);
-                    }
+                    } catch (e) {}
                 };
                 const timer = setTimeout(checkUpdate, 2000);
                 return () => clearTimeout(timer);
@@ -699,74 +696,59 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
-            // --- UPDATED DATA FETCHING LOGIC (Stooq Engine - v24.0) ---
+            // --- RESILIENT DATA FETCHING ENGINE (v25.0) ---
             
-            // Fallback: Yahoo Finance via CodeTabs (Backup Only)
-            const fetchYahooData = async (ticker) => { 
-                const timestamp = new Date().getTime(); 
-                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
-                
-                try {
-                    // Using CodeTabs as it's cleaner for Yahoo headers
-                    const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`);
-                    const data = await res.json();
-                    const meta = data?.chart?.result?.[0]?.meta;
-                    return { 
-                        price: meta?.regularMarketPrice || null, 
-                        name: meta?.longName || meta?.shortName || null 
-                    };
-                } catch (e) {
-                    return { price: null, name: null };
+            // Utility: Sleep for throttling
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            // Strategy: Try multiple proxies in sequence until one works
+            const PROXY_LIST = [
+                // 'https://corsproxy.io/?', // Often fast but strict
+                'https://api.allorigins.win/raw?url=', // Good for JSON
+                'https://thingproxy.freeboard.io/fetch/', // Backup
+                'https://api.codetabs.com/v1/proxy?quest=' // Fallback
+            ];
+
+            const fetchWithProxyRotation = async (targetUrl) => {
+                for (const proxyBase of PROXY_LIST) {
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s limit per proxy
+                        
+                        const res = await fetch(`${proxyBase}${encodeURIComponent(targetUrl)}`, {
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        
+                        if (!res.ok) throw new Error(`Status ${res.status}`);
+                        const data = await res.json();
+                        return data; // Success!
+                    } catch (e) {
+                        // console.warn(`Proxy ${proxyBase} failed, trying next...`);
+                        continue;
+                    }
                 }
+                return null; // All failed
             };
 
-            // Primary: Stooq via AllOrigins (CSV) - Much more robust
-            const fetchStooqData = async (ticker) => {
-                // Normalize ticker for Stooq
-                let stooqTicker = ticker;
+            const fetchYahooStock = async (ticker) => {
+                const timestamp = new Date().getTime();
+                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&includePrePost=false&_t=${timestamp}`;
                 
-                // If it looks like a currency pair (e.g. USDT-USD), skip Stooq or handle specific cases
-                // But for pure stocks:
-                if (!ticker.includes('.')) {
-                    // Assume US stock if no suffix
-                    stooqTicker = `${ticker}.US`;
-                }
-                // TW stocks already have .TW suffix which matches Stooq
-                
-                const url = `https://stooq.com/q/l/?s=${stooqTicker}&f=sd2t2ohlcv&h&e=csv`;
-                // Use AllOrigins as proxy for CSV
-                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-                
-                try {
-                    const res = await fetch(proxyUrl);
-                    if (!res.ok) throw new Error('Proxy error');
-                    const data = await res.json();
-                    const csv = data.contents;
-                    
-                    // Parse CSV: 
-                    // Symbol,Date,Time,Open,High,Low,Close,Volume
-                    // 2330.TW,2025-01-24,13:30:00,1000,1005,990,1000,12345
-                    
-                    const lines = csv.trim().split('\n');
-                    if (lines.length < 2) return null; // No data
-                    
-                    const header = lines[0].split(',');
-                    const values = lines[1].split(',');
-                    
-                    const closeIdx = header.indexOf('Close');
-                    if (closeIdx === -1) return null;
-                    
-                    const price = parseFloat(values[closeIdx]);
-                    if (isNaN(price)) return null;
-                    
-                    return { price, name: ticker }; // Stooq CSV lacks name, use ticker as fallback
-                } catch (e) {
-                    // console.warn("Stooq fetch failed for", ticker);
-                    return null;
-                }
+                const data = await fetchWithProxyRotation(url);
+                if (!data) return null;
+
+                const meta = data.chart?.result?.[0]?.meta;
+                if (!meta) return null;
+
+                return {
+                    price: meta.regularMarketPrice,
+                    name: meta.longName || meta.shortName || ticker,
+                    currency: meta.currency
+                };
             };
 
-            // Crypto: CoinGecko
+            // Crypto: CoinGecko (Direct, Reliable)
             const fetchCryptoGecko = async () => {
                 const mapper = { 'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDT': 'tether', 'SOL': 'solana', 'BNB': 'binancecoin', 'XRP': 'ripple' };
                 const targets = activeCurrencies.filter(c => mapper[c]);
@@ -783,7 +765,7 @@
                 } catch(e) { return {}; }
             };
 
-            // Forex: Frankfurter / Open ER
+            // Forex: Open Exchange Rates (Direct, Reliable)
             const fetchExchangeRates = async () => {
                 try {
                     const res = await fetch('https://open.er-api.com/v6/latest/USD');
@@ -797,59 +779,73 @@
                 setIsUpdating(true); 
                 playSfx('tap'); 
                 const reportLogs = []; 
+                let successCount = 0;
                 let newRates = { ...rates }; 
                 
                 try { 
-                    // 1. Forex (Parallel)
-                    const forexPromise = fetchExchangeRates().then(data => {
-                        if (data.TWD) {
-                            const usdToTwd = data.TWD;
-                            newRates['USD'] = usdToTwd;
-                            activeCurrencies.forEach(code => {
-                                if (code !== 'USD' && code !== 'TWD' && data[code]) {
-                                    newRates[code] = (1 / data[code]) * usdToTwd;
-                                }
-                            });
-                        }
-                    });
+                    triggerToast("正在初始化更新連線...");
 
-                    // 2. Crypto (Parallel)
-                    const cryptoPromise = fetchCryptoGecko().then(geckoRates => {
-                        Object.assign(newRates, geckoRates);
-                    });
-
-                    // 3. Stocks Logic: Stooq -> Fallback Yahoo
-                    const processStock = async (stock) => {
-                        // Strategy: Try Stooq first (Stable)
-                        let result = await fetchStooqData(stock.ticker);
-                        
-                        // If Stooq fails, try Yahoo (Backup)
-                        if (!result || !result.price) {
-                            // console.log("Stooq failed for " + stock.ticker + ", trying Yahoo...");
-                            const yahooResult = await fetchYahooData(stock.ticker);
-                            if (yahooResult && yahooResult.price) {
-                                result = yahooResult;
+                    // 1. Forex & Crypto (Parallel)
+                    await Promise.all([
+                        fetchExchangeRates().then(data => {
+                            if (data.TWD) {
+                                const usdToTwd = data.TWD;
+                                newRates['USD'] = usdToTwd;
+                                activeCurrencies.forEach(code => {
+                                    if (code !== 'USD' && code !== 'TWD' && data[code]) {
+                                        newRates[code] = (1 / data[code]) * usdToTwd;
+                                    }
+                                });
+                                successCount++;
                             }
-                        }
-
-                        if (result && result.price) {
-                            if (Math.abs(result.price - stock.price) > 0.01) {
-                                reportLogs.push({ label: stock.name, value: `${stock.price.toFixed(2)} -> ${result.price.toFixed(2)}`, diff: result.price - stock.price });
-                            }
-                            // Keep existing name if Stooq didn't return one (it usually doesn't)
-                            // Only update name if Yahoo returned a better one
-                            const newName = (result.name && result.name !== stock.ticker) ? result.name : stock.name;
-                            return { ...stock, price: result.price, name: newName };
-                        }
-                        return stock;
-                    };
-
-                    const [updatedForeign, updatedTw] = await Promise.all([
-                        Promise.all(foreignStocks.map(processStock)),
-                        Promise.all(twStocks.map(processStock)),
-                        forexPromise,
-                        cryptoPromise
+                        }),
+                        fetchCryptoGecko().then(geckoRates => {
+                            Object.assign(newRates, geckoRates);
+                            if(Object.keys(geckoRates).length > 0) successCount++;
+                        })
                     ]);
+
+                    // 2. Stocks (Throttled & Batched Logic)
+                    // We process stocks one by one (or in small chunks) to be polite to proxies
+                    const allStocks = [
+                        ...twStocks.map(s => ({ ...s, type: 'tw' })),
+                        ...foreignStocks.map(s => ({ ...s, type: 'foreign' }))
+                    ];
+
+                    let updatedTw = [...twStocks];
+                    let updatedForeign = [...foreignStocks];
+
+                    const BATCH_SIZE = 3; // Process 3 stocks at a time
+                    for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
+                        const batch = allStocks.slice(i, i + BATCH_SIZE);
+                        const promises = batch.map(async (stock) => {
+                            const result = await fetchYahooStock(stock.ticker);
+                            
+                            if (result && result.price) {
+                                successCount++;
+                                const diff = result.price - stock.price;
+                                // Always log change if we got data, even if small, to show "active" status
+                                if (Math.abs(diff) > 0.0001) {
+                                    reportLogs.push({ label: stock.name, value: `${stock.price.toFixed(2)} -> ${result.price.toFixed(2)}`, diff });
+                                } else {
+                                    // Log explicit "unchanged" for internal tracking or verbose user feedback
+                                    // reportLogs.push({ label: stock.name, value: "無變動", diff: 0 });
+                                }
+
+                                // Update local array
+                                const targetArray = stock.type === 'tw' ? updatedTw : updatedForeign;
+                                const index = targetArray.findIndex(s => s.id === stock.id);
+                                if (index !== -1) {
+                                    targetArray[index] = { ...targetArray[index], price: result.price, name: result.name || stock.name };
+                                }
+                            }
+                        });
+
+                        await Promise.all(promises);
+                        if (i + BATCH_SIZE < allStocks.length) {
+                            await sleep(500); // 0.5s pause between batches to be polite
+                        }
+                    }
 
                     setRates(newRates);
                     setForeignStocks(updatedForeign);
@@ -857,9 +853,12 @@
 
                     if (reportLogs.length > 0) {
                         setUpdateResults(reportLogs);
-                        triggerToast(`已更新 ${reportLogs.length} 項資產報價`);
+                        triggerToast(`更新完成！${reportLogs.length} 項資產價格變動`);
+                    } else if (successCount > 0) {
+                        setUpdateResults([{ label: "系統掃描完成", value: `檢查了 ${allStocks.length} 支股票，價格無顯著變動`, diff: 0 }]);
+                        triggerToast(`更新完成 (市場價格無變動)`);
                     } else {
-                        triggerToast('行情更新完成 (無顯著變動)');
+                        triggerToast('所有來源連線逾時，請檢查網路狀況');
                     }
                     
                     setLastUpdate(new Date().toLocaleTimeString()); 
@@ -867,7 +866,7 @@
 
                 } catch (error) { 
                     console.error(error); 
-                    triggerToast('更新過程發生錯誤，請稍後再試');
+                    triggerToast('更新流程發生未預期錯誤');
                 } finally { 
                     setIsUpdating(false); 
                 } 
@@ -918,12 +917,13 @@
                     if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); 
                     setAddItemType(null); 
                     if (!sub) { 
-                        try { 
-                            // Quick single fetch for immediate name resolution on add
-                            const quote = await fetchStooqData(ticker);
-                            const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; 
-                            updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: quote?.name || item.name, price: quote?.price || 0 }; } return item; })); 
-                        } catch (e) { console.error("Auto-fetch name failed", e); } 
+                        // Auto-fetch name in background
+                        fetchYahooStock(ticker).then(data => {
+                            if (data && data.name) {
+                                const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks;
+                                updateFunc(prev => prev.map(item => item.id === id ? { ...item, name: data.name, price: data.price || 0 } : item));
+                            }
+                        });
                     } 
                 } 
                 playSfx('success'); 
