@@ -52,7 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.3.0'; // Updated for Multi-Source Engine
+        const APP_VERSION = '23.4.0'; // Updated for Batch Fetching Engine
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -699,128 +699,48 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
-            // --- UPDATED DATA FETCHING LOGIC (Robust & Fast) ---
-            const fetchYahooData = async (ticker) => { 
-                const timestamp = new Date().getTime(); 
-                // Changed from query1 to query2 (often less congested)
-                const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
+            // --- UPDATED DATA FETCHING LOGIC (BATCH MODE) ---
+            const fetchBatchStockQuotes = async (tickers) => {
+                if (!tickers || tickers.length === 0) return {};
                 
-                // Timeout Controller (5s max)
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); 
-
-                const tryFetch = async (proxyUrl) => {
-                    try {
-                        const res = await fetch(proxyUrl, { 
-                            cache: "no-store",
-                            signal: controller.signal
-                        });
-                        if (!res.ok) throw new Error('Network response was not ok');
-                        const data = await res.json();
-                        // Handle different proxy wrapper structures
-                        let meta;
-                        if (data.contents) { // allorigins style
-                             const inner = JSON.parse(data.contents);
-                             meta = inner?.chart?.result?.[0]?.meta;
-                        } else { // corsproxy style
-                             meta = data?.chart?.result?.[0]?.meta;
-                        }
-                        return { 
-                            price: meta?.regularMarketPrice || null, 
-                            name: meta?.longName || meta?.shortName || null 
-                        };
-                    } catch (e) {
-                        throw e;
-                    }
-                };
-
-                try {
-                    // Strategy 1: Primary Proxy (codetabs - often very reliable)
-                    // We try this one first for US stocks as it's less blocked than corsproxy currently
-                    try {
-                        const result = await tryFetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`);
-                        clearTimeout(timeoutId);
-                        return result;
-                    } catch(e) {
-                        // If blocked or fail, continue
-                    }
-
-                    // Strategy 2: Backup Proxy (corsproxy.io)
-                    if (!controller.signal.aborted) {
-                        try {
-                            const result = await tryFetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
-                            clearTimeout(timeoutId);
-                            return result;
-                        } catch(e) {}
-                    }
-
-                    // Strategy 3: Last Resort Proxy (allorigins)
-                    if (!controller.signal.aborted) {
-                        const result = await tryFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
-                        clearTimeout(timeoutId);
-                        return result;
-                    }
-
-                    throw new Error("All proxies failed");
-                } catch (e) {
-                    // console.warn(`Fetch failed for ${ticker}`);
-                    return { price: null, name: null };
-                } finally {
-                    clearTimeout(timeoutId);
-                }
-            };
-
-            // CoinGecko for Crypto (No Proxy Needed)
-            const fetchCryptoGecko = async () => {
-                // Map common symbols to CoinGecko IDs
-                const mapper = { 'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDT': 'tether', 'SOL': 'solana', 'BNB': 'binancecoin', 'XRP': 'ripple' };
-                // Reverse map for results
-                const ids = [];
-                const idToSymbol = {};
-                
-                Object.keys(INITIAL_RATES).forEach(code => {
-                     // Check if this rate is actually a crypto in disguise or user added it
-                     // For AssetPilot, user tickers are usually like BTC or BTC-USD
-                });
-                
-                // For simplicity, we just fetch standard ones if they exist in our rates list
-                // OR we check activeCurrencies.
-                // activeCurrencies contains ['USD', 'BTC', 'ETH'] etc.
-                
-                const targets = activeCurrencies.filter(c => mapper[c]);
-                if (targets.length === 0) return {};
-                
-                const targetIds = targets.map(t => mapper[t]).join(',');
+                // Use Yahoo's "quote" endpoint which supports multiple symbols separated by commas
+                // This significantly reduces the number of requests and avoids 429 errors
+                const symbols = tickers.join(',');
+                const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
                 
                 try {
-                    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${targetIds}&vs_currencies=twd`);
-                    if(!res.ok) return {};
-                    const data = await res.json();
+                    // Using 'api.allorigins.win/raw' acts as a transparent proxy
+                    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`);
+                    if (!res.ok) throw new Error('Proxy error');
                     
-                    const rates = {};
-                    targets.forEach(t => {
-                        const id = mapper[t];
-                        if(data[id] && data[id].twd) {
-                            rates[t] = data[id].twd;
-                        }
+                    const data = await res.json();
+                    const results = data.quoteResponse?.result || [];
+                    
+                    // Convert array to map: { 'AAPL': { price: 150, name: 'Apple' } }
+                    const quoteMap = {};
+                    results.forEach(item => {
+                        quoteMap[item.symbol] = {
+                            price: item.regularMarketPrice,
+                            name: item.longName || item.shortName,
+                            symbol: item.symbol
+                        };
                     });
-                    return rates;
-                } catch(e) {
-                    console.error("CoinGecko failed", e);
+                    return quoteMap;
+                } catch (e) {
+                    console.error("Batch fetch failed", e);
                     return {};
                 }
             };
 
-            // Frankfurter API for Fiat Currencies (Direct, No Proxy, Fast)
-            const fetchFrankfurterRates = async (base, symbols) => {
-                if (symbols.length === 0) return {};
+            const fetchExchangeRates = async () => {
+                // Use Open Exchange Rates (via open.er-api.com) - Much more reliable for TWD
                 try {
-                    const res = await fetch(`https://api.frankfurter.app/latest?from=${base}&to=${symbols.join(',')}`);
+                    const res = await fetch('https://open.er-api.com/v6/latest/USD');
                     if (!res.ok) return {};
                     const data = await res.json();
                     return data.rates || {};
                 } catch (e) {
-                    console.error("Frankfurter API failed", e);
+                    console.error("Forex fetch failed", e);
                     return {};
                 }
             };
@@ -829,79 +749,73 @@
                 setIsUpdating(true); 
                 playSfx('tap'); 
                 const reportLogs = []; 
-                const oldNetWorth = totalNetWorth; 
                 let newRates = { ...rates }; 
                 
                 try { 
-                    // Classification
-                    const cryptoSymbols = ['BTC', 'ETH', 'USDT', 'SOL', 'BNB', 'XRP'];
-                    const fiatCurrencies = activeCurrencies.filter(c => c !== 'TWD' && !cryptoSymbols.includes(c));
-                    const cryptoCurrencies = activeCurrencies.filter(c => cryptoSymbols.includes(c));
-
-                    // --- PARALLEL EXECUTION START ---
-                    
-                    // Task A: Fiat Rates via Frankfurter
-                    const fiatPromise = (async () => {
-                        try {
-                            const res = await fetch(`https://api.frankfurter.app/latest?from=TWD&to=${fiatCurrencies.join(',')}`);
-                            const data = await res.json();
-                            if (data && data.rates) {
-                                for (const [code, rateInCur] of Object.entries(data.rates)) {
-                                    const rateInTwd = 1 / rateInCur;
-                                    newRates[code] = rateInTwd;
-                                }
+                    // 1. Fetch Exchange Rates (Single Request)
+                    const forexData = await fetchExchangeRates();
+                    if (forexData.TWD) {
+                        const usdToTwd = forexData.TWD;
+                        newRates['USD'] = usdToTwd;
+                        
+                        // Update other currencies based on USD cross rates
+                        // Rate = (1 / USD_rate_of_Currency) * USD_to_TWD
+                        // Example: JPY rate in TWD = (1 USD / 150 JPY) * 32 TWD = 0.213
+                        activeCurrencies.forEach(code => {
+                            if (code !== 'USD' && code !== 'TWD' && forexData[code]) {
+                                newRates[code] = (1 / forexData[code]) * usdToTwd;
                             }
-                        } catch (e) { console.warn("Frankfurter failed"); }
-                    })();
+                        });
+                    }
 
-                    // Task B: Crypto via CoinGecko (Removes load from Yahoo)
-                    const cryptoPromise = (async () => {
-                        if (cryptoCurrencies.length > 0) {
-                            const geckoRates = await fetchCryptoGecko();
-                            Object.assign(newRates, geckoRates);
+                    // 2. Fetch Stocks (Batch Request)
+                    const allTickers = [
+                        ...foreignStocks.map(s => s.ticker),
+                        ...twStocks.map(s => s.ticker)
+                    ];
+                    
+                    // Filter out duplicates
+                    const uniqueTickers = [...new Set(allTickers)];
+                    
+                    // Execute Batch Fetch
+                    const quoteMap = await fetchBatchStockQuotes(uniqueTickers);
+
+                    // Update Foreign Stocks
+                    const updatedForeignStocks = foreignStocks.map(s => {
+                        const quote = quoteMap[s.ticker];
+                        if (quote && quote.price) {
+                            if (Math.abs(quote.price - s.price) > 0.01) {
+                                reportLogs.push({ label: s.name, value: `${s.price.toFixed(2)} -> ${quote.price.toFixed(2)}`, diff: quote.price - s.price });
+                            }
+                            return { ...s, price: quote.price, name: quote.name || s.name };
                         }
-                    })();
-
-                    // Task C: Foreign Stocks via Yahoo (Enhanced Proxy)
-                    const foreignStockPromises = foreignStocks.map(async (s) => { 
-                        // Note: If it's a crypto stored as stock (e.g. BTC-USD), Yahoo might still be used if not caught above
-                        const { price, name } = await fetchYahooData(s.ticker); 
-                        let updatedS = { ...s }; 
-                        if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; 
-                        if (price && price !== s.price) { 
-                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); 
-                            updatedS.price = price; 
-                        } 
-                        return updatedS; 
+                        return s;
                     });
 
-                    // Task D: TW Stocks via Yahoo (Enhanced Proxy)
-                    const twStockPromises = twStocks.map(async (s) => { 
-                        const { price, name } = await fetchYahooData(s.ticker); 
-                        let updatedS = { ...s }; 
-                        if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; 
-                        if (price && price !== s.price) { 
-                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); 
-                            updatedS.price = price; 
-                        } 
-                        return updatedS; 
+                    // Update TW Stocks
+                    const updatedTwStocks = twStocks.map(s => {
+                        const quote = quoteMap[s.ticker];
+                        if (quote && quote.price) {
+                            if (Math.abs(quote.price - s.price) > 0.01) {
+                                reportLogs.push({ label: s.name, value: `${s.price.toFixed(2)} -> ${quote.price.toFixed(2)}`, diff: quote.price - s.price });
+                            }
+                            return { ...s, price: quote.price, name: quote.name || s.name };
+                        }
+                        return s;
                     });
 
-                    // Wait for ALL tasks
-                    await Promise.all([
-                        fiatPromise, 
-                        cryptoPromise, 
-                        Promise.all(foreignStockPromises).then(results => setForeignStocks(results)),
-                        Promise.all(twStockPromises).then(results => setTwStocks(results))
-                    ]);
-
+                    // Update State
                     setRates(newRates);
+                    setForeignStocks(updatedForeignStocks);
+                    setTwStocks(updatedTwStocks);
 
                     if (reportLogs.length > 0) {
                         setUpdateResults(reportLogs);
                         triggerToast(`已更新 ${reportLogs.length} 項資產報價`);
+                    } else if (Object.keys(quoteMap).length > 0) {
+                        triggerToast('行情更新完成 (無顯著變動)');
                     } else {
-                        triggerToast('行情無重大變動或部分連線逾時');
+                        triggerToast('連線逾時，請檢查網路或稍後再試');
                     }
                     
                     setLastUpdate(new Date().toLocaleTimeString()); 
@@ -961,9 +875,11 @@
                     setAddItemType(null); 
                     if (!sub) { 
                         try { 
-                            const { price, name: fetchedName } = await fetchYahooData(ticker); 
+                            // Quick single fetch for immediate name resolution on add
+                            const quoteMap = await fetchBatchStockQuotes([ticker]);
+                            const quote = quoteMap[ticker];
                             const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; 
-                            updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: fetchedName || item.name, price: price || 0 }; } return item; })); 
+                            updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: quote?.name || item.name, price: quote?.price || 0 }; } return item; })); 
                         } catch (e) { console.error("Auto-fetch name failed", e); } 
                     } 
                 } 
