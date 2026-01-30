@@ -6,6 +6,7 @@
     <title>AssetPilot</title>
     
     <!-- PWA Settings -->
+    <!-- FIXED: Changed name to "AssetPilot" -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -52,7 +53,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '26.2.0'; // Major Update: MSN Multi-Proxy Engine
+        const APP_VERSION = '23.1.1';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -498,7 +499,7 @@
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
                     <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">{results.length === 0 ? <p className="text-slate-400 text-center text-sm">本次更新無顯著價格變動</p> : results.map((item, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs"><span className="text-slate-300 font-mono">{item.label}</span><span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>{isPrivacyMode && item.label.includes('資產') ? '****' : item.value}</span></div>))}</div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">{results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : results.map((item, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs"><span className="text-slate-300 font-mono">{item.label}</span><span className={`${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : 'text-slate-400'}`}>{isPrivacyMode && item.label.includes('資產') ? '****' : item.value}</span></div>))}</div>
                         <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
                     </div>
                 </div>
@@ -626,8 +627,9 @@
             const [updateResults, setUpdateResults] = useState(null);
             const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
-            const [updateAvailable, setUpdateAvailable] = useState(null); 
+            const [updateAvailable, setUpdateAvailable] = useState(null); // Version string if update available
             
+            // Get Current Year for Dynamic Display
             const currentYear = new Date().getFullYear();
 
             // Auto-update check
@@ -642,10 +644,13 @@
                                 const remoteVersion = match[1];
                                 if (remoteVersion !== APP_VERSION) {
                                     setUpdateAvailable(remoteVersion);
+                                    console.log(`New version found: ${remoteVersion}`);
                                 }
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.log("Auto-update check failed", e);
+                    }
                 };
                 const timer = setTimeout(checkUpdate, 2000);
                 return () => clearTimeout(timer);
@@ -696,203 +701,44 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
-            // --- NEW MSN (BING FINANCE) ENGINE (v26.2.0) ---
-            
-            // Multi-Proxy Rotation Strategy
-            const PROXY_LIST = [
-                'https://api.allorigins.win/get?url=', // Stable JSON
-                'https://corsproxy.io/?', // Fast but strict
-                'https://api.codetabs.com/v1/proxy?quest=' // Fallback
-            ];
-
-            const fetchWithProxyRotation = async (targetUrl) => {
-                for (const proxyBase of PROXY_LIST) {
-                    try {
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout per proxy
-                        
-                        const fullUrl = `${proxyBase}${encodeURIComponent(targetUrl)}`;
-                        const res = await fetch(fullUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        
-                        if (!res.ok) throw new Error(`Status ${res.status}`);
-                        
-                        // Handle different proxy response formats
-                        const json = await res.json();
-                        if (proxyBase.includes('allorigins')) {
-                            return JSON.parse(json.contents);
-                        } else {
-                            return json;
-                        }
-                    } catch (e) {
-                        // console.warn(`Proxy ${proxyBase} failed, trying next...`);
-                        continue;
-                    }
-                }
-                return null; // All proxies failed
-            };
-
-            const fetchMsnId = async (ticker) => {
-                // Heuristic for market to improve accuracy
-                let market = 'en-us';
-                let query = ticker;
-                if (ticker.endsWith('.TW')) { market = 'zh-tw'; query = ticker.replace('.TW', ''); }
-                else if (ticker.endsWith('.JP')) { market = 'ja-jp'; query = ticker.replace('.JP', ''); }
+            // --- UPDATED DATA FETCHING LOGIC (More Robust) ---
+            const fetchYahooData = async (ticker) => { 
+                const timestamp = new Date().getTime(); 
+                // Primary Proxy: corsproxy.io
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
                 
-                const searchUrl = `https://services.bingapis.com/contentservices-finance.csautosuggest/api/v1/search?query=${encodeURIComponent(query)}&market=${market}`;
-                
-                try {
-                    const data = await fetchWithProxyRotation(searchUrl);
-                    if (data && data.length > 0) {
-                        // Priority matching: Exact symbol match -> Name match -> First result
-                        let match = data.find(item => item.Symbol === ticker || item.Symbol === query);
-                        if (!match) match = data[0]; 
-                        return { secId: match.SecId, symbol: match.Symbol, name: match.Name };
-                    }
-                } catch (e) {
-                    console.warn(`MSN Search failed for ${ticker}`);
-                }
-                return null;
-            };
-
-            const fetchMsnQuote = async (secId) => {
-                if (!secId) return null;
-                const quoteUrl = `https://services.bingapis.com/contentservices-finance.csquotes/api/v1/quotes?secids=${secId}`;
-                
-                try {
-                    const data = await fetchWithProxyRotation(quoteUrl);
-                    if (data && data.length > 0) {
-                        const q = data[0];
-                        return {
-                            price: q.Last,
-                            name: q.Name || q.ShortName,
-                            symbol: q.Symbol
-                        };
-                    }
-                } catch (e) {
-                    console.warn(`MSN Quote failed for ${secId}`);
-                }
-                return null;
-            };
-
-            // Crypto: CoinGecko (Direct, Reliable)
-            const fetchCryptoGecko = async () => {
-                const mapper = { 'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDT': 'tether', 'SOL': 'solana', 'BNB': 'binancecoin', 'XRP': 'ripple' };
-                const targets = activeCurrencies.filter(c => mapper[c]);
-                if (targets.length === 0) return {};
-                const targetIds = targets.map(t => mapper[t]).join(',');
-                
-                try {
-                    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${targetIds}&vs_currencies=twd`);
-                    if(!res.ok) return {};
+                // Helper to try fetch
+                const tryFetch = async (proxyUrl) => {
+                    const res = await fetch(proxyUrl, { cache: "no-store" });
+                    if (!res.ok) throw new Error('Network response was not ok');
                     const data = await res.json();
-                    const rates = {};
-                    targets.forEach(t => { const id = mapper[t]; if(data[id]?.twd) rates[t] = data[id].twd; });
-                    return rates;
-                } catch(e) { return {}; }
-            };
-
-            // Forex: Open Exchange Rates (Direct, Reliable)
-            const fetchExchangeRates = async () => {
-                try {
-                    const res = await fetch('https://open.er-api.com/v6/latest/USD');
-                    if (!res.ok) return {};
-                    const data = await res.json();
-                    return data.rates || {};
-                } catch (e) { return {}; }
-            };
-
-            const fetchLiveData = async () => { 
-                setIsUpdating(true); 
-                playSfx('tap'); 
-                const reportLogs = []; 
-                let successCount = 0;
-                let newRates = { ...rates }; 
-                
-                try { 
-                    triggerToast("正在連線至 MSN 財經...");
-
-                    // 1. Forex & Crypto (Parallel)
-                    await Promise.all([
-                        fetchExchangeRates().then(data => {
-                            if (data.TWD) {
-                                const usdToTwd = data.TWD;
-                                newRates['USD'] = usdToTwd;
-                                activeCurrencies.forEach(code => {
-                                    if (code !== 'USD' && code !== 'TWD' && data[code]) {
-                                        newRates[code] = (1 / data[code]) * usdToTwd;
-                                    }
-                                });
-                                successCount++;
-                            }
-                        }),
-                        fetchCryptoGecko().then(geckoRates => {
-                            Object.assign(newRates, geckoRates);
-                            if(Object.keys(geckoRates).length > 0) successCount++;
-                        })
-                    ]);
-
-                    // 2. Stocks (MSN Engine with State Caching)
-                    const processStock = async (stock) => {
-                        let secId = stock.msnSecId;
-                        let updatedStock = { ...stock };
-
-                        // A. Search ID (Only if missing)
-                        if (!secId) {
-                            const searchResult = await fetchMsnId(stock.ticker);
-                            if (searchResult) {
-                                secId = searchResult.secId;
-                                updatedStock.msnSecId = secId; // Persist ID to avoid future searches
-                            }
-                        }
-
-                        // B. Get Quote
-                        if (secId) {
-                            const result = await fetchMsnQuote(secId);
-                            if (result && result.price) {
-                                const diff = result.price - stock.price;
-                                if (Math.abs(diff) > 0.0001) {
-                                    reportLogs.push({ label: stock.name, value: `${stock.price.toFixed(2)} -> ${result.price.toFixed(2)}`, diff });
-                                }
-                                updatedStock.price = result.price;
-                                if (result.name && result.name !== result.symbol) {
-                                    updatedStock.name = result.name;
-                                }
-                                successCount++;
-                            }
-                        }
-                        return updatedStock;
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    return { 
+                        price: meta?.regularMarketPrice || null, 
+                        name: meta?.longName || meta?.shortName || null 
                     };
+                };
 
-                    const [updatedTw, updatedForeign] = await Promise.all([
-                        Promise.all(twStocks.map(s => processStock(s))),
-                        Promise.all(foreignStocks.map(s => processStock(s)))
-                    ]);
-
-                    setRates(newRates);
-                    setForeignStocks(updatedForeign);
-                    setTwStocks(updatedTw);
-
-                    if (reportLogs.length > 0) {
-                        setUpdateResults(reportLogs);
-                        triggerToast(`更新完成！${reportLogs.length} 項資產價格變動`);
-                    } else if (successCount > 0) {
-                        setUpdateResults([{ label: "系統掃描完成", value: `所有資產價格已確認為最新`, diff: 0 }]);
-                        triggerToast(`更新完成 (市場價格無變動)`);
-                    } else {
-                        triggerToast('所有連線嘗試失敗，請稍後再試');
+                try {
+                    return await tryFetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
+                } catch (e) {
+                    console.warn(`Primary proxy failed for ${ticker}, trying backup...`);
+                    try {
+                        // Backup Proxy: allorigins
+                        // Note: allorigins returns JSON wrapped in "contents", we need raw if possible or parse contents
+                        const backupRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
+                        const backupJson = await backupRes.json();
+                        const data = JSON.parse(backupJson.contents);
+                        const meta = data?.chart?.result?.[0]?.meta;
+                        return { price: meta?.regularMarketPrice || null, name: meta?.longName || meta?.shortName || null };
+                    } catch (e2) {
+                        console.error(`All proxies failed for ${ticker}`, e2);
+                        return { price: null, name: null };
                     }
-                    
-                    setLastUpdate(new Date().toLocaleTimeString()); 
-                    playSfx('success'); 
-
-                } catch (error) { 
-                    console.error(error); 
-                    triggerToast('更新流程發生未預期錯誤');
-                } finally { 
-                    setIsUpdating(false); 
-                } 
+                }
             };
+
+            const fetchLiveData = async () => { setIsUpdating(true); playSfx('tap'); const reportLogs = []; const oldNetWorth = totalNetWorth; let newRates = { ...rates }; try { for (const currency of activeCurrencies) { if (currency === 'TWD') continue; try { const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`; const { price: rate } = await fetchYahooData(ticker); if (rate) { const oldRate = rates[currency] || 0; if (Math.abs(rate - oldRate) > 0.001) { reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${rate.toFixed(2)}`, diff: rate - oldRate }); newRates[currency] = rate; } } } catch (e) { console.warn(`Failed to fetch rate for ${currency}`, e); } } setRates(newRates); const newForeignStocks = await Promise.all(foreignStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); const newTwStocks = await Promise.all(twStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); setForeignStocks(newForeignStocks); setTwStocks(newTwStocks); const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0); const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0); const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0); const newTotalNetWorth = totalCashTWD + newTwTotal + newForeignStocksTotal + newForeignCashTotal; if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) { reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth }); } setLastUpdate(new Date().toLocaleTimeString()); setUpdateResults(reportLogs); triggerToast('即時報價更新完成'); playSfx('success'); } catch (error) { console.error(error); } finally { setIsUpdating(false); } };
             const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.1_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
@@ -939,8 +785,11 @@
                     if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); 
                     setAddItemType(null); 
                     if (!sub) { 
-                        // Auto-fetch name in background (using new MSN engine)
-                        // Note: MSN ID resolution happens during first update
+                        try { 
+                            const { price, name: fetchedName } = await fetchYahooData(ticker); 
+                            const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; 
+                            updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: fetchedName || item.name, price: price || 0 }; } return item; })); 
+                        } catch (e) { console.error("Auto-fetch name failed", e); } 
                     } 
                 } 
                 playSfx('success'); 
