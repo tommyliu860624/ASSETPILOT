@@ -52,7 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.4.0'; // Updated for Batch Fetching Engine
+        const APP_VERSION = '24.0.0'; // Major Update: Stooq Engine
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -699,50 +699,98 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
-            // --- UPDATED DATA FETCHING LOGIC (BATCH MODE) ---
-            const fetchBatchStockQuotes = async (tickers) => {
-                if (!tickers || tickers.length === 0) return {};
-                
-                // Use Yahoo's "quote" endpoint which supports multiple symbols separated by commas
-                // This significantly reduces the number of requests and avoids 429 errors
-                const symbols = tickers.join(',');
-                const yahooUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
+            // --- UPDATED DATA FETCHING LOGIC (Stooq Engine - v24.0) ---
+            
+            // Fallback: Yahoo Finance via CodeTabs (Backup Only)
+            const fetchYahooData = async (ticker) => { 
+                const timestamp = new Date().getTime(); 
+                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
                 
                 try {
-                    // Using 'api.allorigins.win/raw' acts as a transparent proxy
-                    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`);
-                    if (!res.ok) throw new Error('Proxy error');
-                    
+                    // Using CodeTabs as it's cleaner for Yahoo headers
+                    const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(yahooUrl)}`);
                     const data = await res.json();
-                    const results = data.quoteResponse?.result || [];
-                    
-                    // Convert array to map: { 'AAPL': { price: 150, name: 'Apple' } }
-                    const quoteMap = {};
-                    results.forEach(item => {
-                        quoteMap[item.symbol] = {
-                            price: item.regularMarketPrice,
-                            name: item.longName || item.shortName,
-                            symbol: item.symbol
-                        };
-                    });
-                    return quoteMap;
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    return { 
+                        price: meta?.regularMarketPrice || null, 
+                        name: meta?.longName || meta?.shortName || null 
+                    };
                 } catch (e) {
-                    console.error("Batch fetch failed", e);
-                    return {};
+                    return { price: null, name: null };
                 }
             };
 
+            // Primary: Stooq via AllOrigins (CSV) - Much more robust
+            const fetchStooqData = async (ticker) => {
+                // Normalize ticker for Stooq
+                let stooqTicker = ticker;
+                
+                // If it looks like a currency pair (e.g. USDT-USD), skip Stooq or handle specific cases
+                // But for pure stocks:
+                if (!ticker.includes('.')) {
+                    // Assume US stock if no suffix
+                    stooqTicker = `${ticker}.US`;
+                }
+                // TW stocks already have .TW suffix which matches Stooq
+                
+                const url = `https://stooq.com/q/l/?s=${stooqTicker}&f=sd2t2ohlcv&h&e=csv`;
+                // Use AllOrigins as proxy for CSV
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                
+                try {
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) throw new Error('Proxy error');
+                    const data = await res.json();
+                    const csv = data.contents;
+                    
+                    // Parse CSV: 
+                    // Symbol,Date,Time,Open,High,Low,Close,Volume
+                    // 2330.TW,2025-01-24,13:30:00,1000,1005,990,1000,12345
+                    
+                    const lines = csv.trim().split('\n');
+                    if (lines.length < 2) return null; // No data
+                    
+                    const header = lines[0].split(',');
+                    const values = lines[1].split(',');
+                    
+                    const closeIdx = header.indexOf('Close');
+                    if (closeIdx === -1) return null;
+                    
+                    const price = parseFloat(values[closeIdx]);
+                    if (isNaN(price)) return null;
+                    
+                    return { price, name: ticker }; // Stooq CSV lacks name, use ticker as fallback
+                } catch (e) {
+                    // console.warn("Stooq fetch failed for", ticker);
+                    return null;
+                }
+            };
+
+            // Crypto: CoinGecko
+            const fetchCryptoGecko = async () => {
+                const mapper = { 'BTC': 'bitcoin', 'ETH': 'ethereum', 'USDT': 'tether', 'SOL': 'solana', 'BNB': 'binancecoin', 'XRP': 'ripple' };
+                const targets = activeCurrencies.filter(c => mapper[c]);
+                if (targets.length === 0) return {};
+                const targetIds = targets.map(t => mapper[t]).join(',');
+                
+                try {
+                    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${targetIds}&vs_currencies=twd`);
+                    if(!res.ok) return {};
+                    const data = await res.json();
+                    const rates = {};
+                    targets.forEach(t => { const id = mapper[t]; if(data[id]?.twd) rates[t] = data[id].twd; });
+                    return rates;
+                } catch(e) { return {}; }
+            };
+
+            // Forex: Frankfurter / Open ER
             const fetchExchangeRates = async () => {
-                // Use Open Exchange Rates (via open.er-api.com) - Much more reliable for TWD
                 try {
                     const res = await fetch('https://open.er-api.com/v6/latest/USD');
                     if (!res.ok) return {};
                     const data = await res.json();
                     return data.rates || {};
-                } catch (e) {
-                    console.error("Forex fetch failed", e);
-                    return {};
-                }
+                } catch (e) { return {}; }
             };
 
             const fetchLiveData = async () => { 
@@ -752,70 +800,66 @@
                 let newRates = { ...rates }; 
                 
                 try { 
-                    // 1. Fetch Exchange Rates (Single Request)
-                    const forexData = await fetchExchangeRates();
-                    if (forexData.TWD) {
-                        const usdToTwd = forexData.TWD;
-                        newRates['USD'] = usdToTwd;
+                    // 1. Forex (Parallel)
+                    const forexPromise = fetchExchangeRates().then(data => {
+                        if (data.TWD) {
+                            const usdToTwd = data.TWD;
+                            newRates['USD'] = usdToTwd;
+                            activeCurrencies.forEach(code => {
+                                if (code !== 'USD' && code !== 'TWD' && data[code]) {
+                                    newRates[code] = (1 / data[code]) * usdToTwd;
+                                }
+                            });
+                        }
+                    });
+
+                    // 2. Crypto (Parallel)
+                    const cryptoPromise = fetchCryptoGecko().then(geckoRates => {
+                        Object.assign(newRates, geckoRates);
+                    });
+
+                    // 3. Stocks Logic: Stooq -> Fallback Yahoo
+                    const processStock = async (stock) => {
+                        // Strategy: Try Stooq first (Stable)
+                        let result = await fetchStooqData(stock.ticker);
                         
-                        // Update other currencies based on USD cross rates
-                        // Rate = (1 / USD_rate_of_Currency) * USD_to_TWD
-                        // Example: JPY rate in TWD = (1 USD / 150 JPY) * 32 TWD = 0.213
-                        activeCurrencies.forEach(code => {
-                            if (code !== 'USD' && code !== 'TWD' && forexData[code]) {
-                                newRates[code] = (1 / forexData[code]) * usdToTwd;
+                        // If Stooq fails, try Yahoo (Backup)
+                        if (!result || !result.price) {
+                            // console.log("Stooq failed for " + stock.ticker + ", trying Yahoo...");
+                            const yahooResult = await fetchYahooData(stock.ticker);
+                            if (yahooResult && yahooResult.price) {
+                                result = yahooResult;
                             }
-                        });
-                    }
-
-                    // 2. Fetch Stocks (Batch Request)
-                    const allTickers = [
-                        ...foreignStocks.map(s => s.ticker),
-                        ...twStocks.map(s => s.ticker)
-                    ];
-                    
-                    // Filter out duplicates
-                    const uniqueTickers = [...new Set(allTickers)];
-                    
-                    // Execute Batch Fetch
-                    const quoteMap = await fetchBatchStockQuotes(uniqueTickers);
-
-                    // Update Foreign Stocks
-                    const updatedForeignStocks = foreignStocks.map(s => {
-                        const quote = quoteMap[s.ticker];
-                        if (quote && quote.price) {
-                            if (Math.abs(quote.price - s.price) > 0.01) {
-                                reportLogs.push({ label: s.name, value: `${s.price.toFixed(2)} -> ${quote.price.toFixed(2)}`, diff: quote.price - s.price });
-                            }
-                            return { ...s, price: quote.price, name: quote.name || s.name };
                         }
-                        return s;
-                    });
 
-                    // Update TW Stocks
-                    const updatedTwStocks = twStocks.map(s => {
-                        const quote = quoteMap[s.ticker];
-                        if (quote && quote.price) {
-                            if (Math.abs(quote.price - s.price) > 0.01) {
-                                reportLogs.push({ label: s.name, value: `${s.price.toFixed(2)} -> ${quote.price.toFixed(2)}`, diff: quote.price - s.price });
+                        if (result && result.price) {
+                            if (Math.abs(result.price - stock.price) > 0.01) {
+                                reportLogs.push({ label: stock.name, value: `${stock.price.toFixed(2)} -> ${result.price.toFixed(2)}`, diff: result.price - stock.price });
                             }
-                            return { ...s, price: quote.price, name: quote.name || s.name };
+                            // Keep existing name if Stooq didn't return one (it usually doesn't)
+                            // Only update name if Yahoo returned a better one
+                            const newName = (result.name && result.name !== stock.ticker) ? result.name : stock.name;
+                            return { ...stock, price: result.price, name: newName };
                         }
-                        return s;
-                    });
+                        return stock;
+                    };
 
-                    // Update State
+                    const [updatedForeign, updatedTw] = await Promise.all([
+                        Promise.all(foreignStocks.map(processStock)),
+                        Promise.all(twStocks.map(processStock)),
+                        forexPromise,
+                        cryptoPromise
+                    ]);
+
                     setRates(newRates);
-                    setForeignStocks(updatedForeignStocks);
-                    setTwStocks(updatedTwStocks);
+                    setForeignStocks(updatedForeign);
+                    setTwStocks(updatedTw);
 
                     if (reportLogs.length > 0) {
                         setUpdateResults(reportLogs);
                         triggerToast(`已更新 ${reportLogs.length} 項資產報價`);
-                    } else if (Object.keys(quoteMap).length > 0) {
-                        triggerToast('行情更新完成 (無顯著變動)');
                     } else {
-                        triggerToast('連線逾時，請檢查網路或稍後再試');
+                        triggerToast('行情更新完成 (無顯著變動)');
                     }
                     
                     setLastUpdate(new Date().toLocaleTimeString()); 
@@ -876,8 +920,7 @@
                     if (!sub) { 
                         try { 
                             // Quick single fetch for immediate name resolution on add
-                            const quoteMap = await fetchBatchStockQuotes([ticker]);
-                            const quote = quoteMap[ticker];
+                            const quote = await fetchStooqData(ticker);
                             const updateFunc = type === 'stockTW' ? setTwStocks : setForeignStocks; 
                             updateFunc(prev => prev.map(item => { if (item.id === id) { return { ...item, name: quote?.name || item.name, price: quote?.price || 0 }; } return item; })); 
                         } catch (e) { console.error("Auto-fetch name failed", e); } 
