@@ -6,7 +6,6 @@
     <title>AssetPilot</title>
     
     <!-- PWA Settings -->
-    <!-- FIXED: Changed name to "AssetPilot" -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -53,7 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.1.1';
+        const APP_VERSION = '23.2.0'; // Updated: Enhanced Network Resilience
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -592,6 +591,74 @@
             );
         };
 
+        // --- UPDATED DATA FETCHING HELPERS (V23.2) ---
+        const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+        const fetchExchangeRatesAPI = async (currencies) => {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' });
+                if (!res.ok) return null;
+                const data = await res.json();
+                const twdRate = data.rates['TWD'];
+                let newRates = {};
+                currencies.forEach(cur => {
+                    if (cur === 'TWD') return;
+                    if (cur === 'USD') newRates[cur] = twdRate;
+                    else if (data.rates[cur]) newRates[cur] = twdRate / data.rates[cur];
+                });
+                return newRates;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const fetchYahooData = async (ticker) => { 
+            const timestamp = new Date().getTime();
+            // 新增多重端點
+            const endpoints = [
+                `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`,
+                `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`
+            ];
+            
+            // 新增多重 Proxy 備援池
+            const proxies = [
+                (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+                (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
+            ];
+
+            // 雙層迴圈：如果 A proxy 的 query1 失敗，自動重試 A 的 query2，再失敗就換 B proxy
+            for (const proxy of proxies) {
+                for (const endpoint of endpoints) {
+                    try {
+                        const targetUrl = proxy(endpoint);
+                        const res = await fetch(targetUrl, { cache: "no-store" });
+                        if (!res.ok) continue;
+                        
+                        let data;
+                        if (targetUrl.includes('allorigins')) {
+                            const json = await res.json();
+                            data = JSON.parse(json.contents);
+                        } else {
+                            data = await res.json();
+                        }
+                        
+                        const meta = data?.chart?.result?.[0]?.meta;
+                        if (meta && meta.regularMarketPrice) {
+                            return { 
+                                price: meta.regularMarketPrice, 
+                                name: meta.longName || meta.shortName || null 
+                            };
+                        }
+                    } catch (e) {
+                        // 失敗靜默處理，繼續嘗試下一個組合
+                    }
+                }
+            }
+            return { price: null, name: null };
+        };
+
+
         const App = () => {
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
@@ -627,12 +694,10 @@
             const [updateResults, setUpdateResults] = useState(null);
             const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
-            const [updateAvailable, setUpdateAvailable] = useState(null); // Version string if update available
+            const [updateAvailable, setUpdateAvailable] = useState(null); 
             
-            // Get Current Year for Dynamic Display
             const currentYear = new Date().getFullYear();
 
-            // Auto-update check
             useEffect(() => {
                 const checkUpdate = async () => {
                     try {
@@ -701,45 +766,99 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
-            // --- UPDATED DATA FETCHING LOGIC (More Robust) ---
-            const fetchYahooData = async (ticker) => { 
-                const timestamp = new Date().getTime(); 
-                // Primary Proxy: corsproxy.io
-                const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
+            // --- UPDATED fetchLiveData (隊列延遲處理) ---
+            const fetchLiveData = async () => {
+                setIsUpdating(true);
+                playSfx('tap');
+                const reportLogs = [];
+                const oldNetWorth = totalNetWorth;
+                let newRates = { ...rates };
                 
-                // Helper to try fetch
-                const tryFetch = async (proxyUrl) => {
-                    const res = await fetch(proxyUrl, { cache: "no-store" });
-                    if (!res.ok) throw new Error('Network response was not ok');
-                    const data = await res.json();
-                    const meta = data?.chart?.result?.[0]?.meta;
-                    return { 
-                        price: meta?.regularMarketPrice || null, 
-                        name: meta?.longName || meta?.shortName || null 
-                    };
-                };
-
                 try {
-                    return await tryFetch(`https://corsproxy.io/?${encodeURIComponent(yahooUrl)}`);
-                } catch (e) {
-                    console.warn(`Primary proxy failed for ${ticker}, trying backup...`);
-                    try {
-                        // Backup Proxy: allorigins
-                        // Note: allorigins returns JSON wrapped in "contents", we need raw if possible or parse contents
-                        const backupRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(yahooUrl)}`);
-                        const backupJson = await backupRes.json();
-                        const data = JSON.parse(backupJson.contents);
-                        const meta = data?.chart?.result?.[0]?.meta;
-                        return { price: meta?.regularMarketPrice || null, name: meta?.longName || meta?.shortName || null };
-                    } catch (e2) {
-                        console.error(`All proxies failed for ${ticker}`, e2);
-                        return { price: null, name: null };
+                    // 1. 匯率分流處理
+                    const apiRates = await fetchExchangeRatesAPI(activeCurrencies);
+                    if (apiRates) {
+                        for (const currency of activeCurrencies) {
+                            if (currency === 'TWD' || !apiRates[currency]) continue;
+                            const oldRate = rates[currency] || 0;
+                            const newRate = apiRates[currency];
+                            if (Math.abs(newRate - oldRate) > 0.001) {
+                                reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${newRate.toFixed(2)}`, diff: newRate - oldRate });
+                                newRates[currency] = newRate;
+                            }
+                        }
+                    } else {
+                        // 原本的 Yahoo 匯率備援機制（如果專用 API 掛掉）
+                        for (const currency of activeCurrencies) {
+                            if (currency === 'TWD') continue;
+                            const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`;
+                            const { price: rate } = await fetchYahooData(ticker);
+                            if (rate) {
+                                const oldRate = rates[currency] || 0;
+                                if (Math.abs(rate - oldRate) > 0.001) {
+                                    reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${rate.toFixed(2)}`, diff: rate - oldRate });
+                                    newRates[currency] = rate;
+                                }
+                            }
+                            await delay(200);
+                        }
                     }
+                    setRates(newRates);
+
+                    // 2. 海外股票隊列處理 (取代 Promise.all 轟炸)
+                    let newForeignStocks = [];
+                    for (const s of foreignStocks) {
+                        const { price, name } = await fetchYahooData(s.ticker);
+                        let updatedS = { ...s };
+                        if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
+                        if (price && price !== s.price) {
+                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
+                            updatedS.price = price;
+                        }
+                        newForeignStocks.push(updatedS);
+                        await delay(300); // 股價抓取延遲 300ms
+                    }
+                    setForeignStocks(newForeignStocks);
+
+                    // 3. 台股現貨隊列處理
+                    let newTwStocks = [];
+                    for (const s of twStocks) {
+                        const { price, name } = await fetchYahooData(s.ticker);
+                        let updatedS = { ...s };
+                        if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
+                        if (price && price !== s.price) {
+                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
+                            updatedS.price = price;
+                        }
+                        newTwStocks.push(updatedS);
+                        await delay(300); // 股價抓取延遲 300ms
+                    }
+                    setTwStocks(newTwStocks);
+
+                    // 4. 計算總和與收尾
+                    const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
+                    const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0);
+                    const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0);
+                    const newTotalNetWorth = totalCashTWD + newTwTotal + newForeignStocksTotal + newForeignCashTotal;
+                    
+                    if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) {
+                        reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth });
+                    }
+                    
+                    setLastUpdate(new Date().toLocaleTimeString());
+                    setUpdateResults(reportLogs);
+                    triggerToast('即時報價更新完成');
+                    playSfx('success');
+                } catch (error) {
+                    console.error(error);
+                    triggerToast('更新過程發生錯誤，部分資料可能未更新');
+                } finally {
+                    setIsUpdating(false);
                 }
             };
 
-            const fetchLiveData = async () => { setIsUpdating(true); playSfx('tap'); const reportLogs = []; const oldNetWorth = totalNetWorth; let newRates = { ...rates }; try { for (const currency of activeCurrencies) { if (currency === 'TWD') continue; try { const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`; const { price: rate } = await fetchYahooData(ticker); if (rate) { const oldRate = rates[currency] || 0; if (Math.abs(rate - oldRate) > 0.001) { reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${rate.toFixed(2)}`, diff: rate - oldRate }); newRates[currency] = rate; } } } catch (e) { console.warn(`Failed to fetch rate for ${currency}`, e); } } setRates(newRates); const newForeignStocks = await Promise.all(foreignStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); const newTwStocks = await Promise.all(twStocks.map(async (s) => { const { price, name } = await fetchYahooData(s.ticker); let updatedS = { ...s }; if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name; if (price && price !== s.price) { reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price }); updatedS.price = price; } return updatedS; })); setForeignStocks(newForeignStocks); setTwStocks(newTwStocks); const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0); const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0); const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0); const newTotalNetWorth = totalCashTWD + newTwTotal + newForeignStocksTotal + newForeignCashTotal; if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) { reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth }); } setLastUpdate(new Date().toLocaleTimeString()); setUpdateResults(reportLogs); triggerToast('即時報價更新完成'); playSfx('success'); } catch (error) { console.error(error); } finally { setIsUpdating(false); } };
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.1_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.2_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
             const openEditItem = (itemData) => { 
@@ -885,7 +1004,6 @@
 
             const TabButton = ({ id, label, icon }) => ( <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}><Icon name={icon} className="w-5 h-5 mb-1" />{label}</button> );
             
-            // ... [renderSection code is same] ...
             const renderSection = (type, index) => {
                 const style = { viewTransitionName: `section-${type}` };
                 if (type === 'cashTW') {
@@ -996,7 +1114,7 @@
                         </div>
                     )}
 
-                    {/* Tab 2: Wallet & Tab 3: Analysis (Render logic same as before, using renderSection) */}
+                    {/* Tab 2: Wallet & Tab 3: Analysis */}
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
@@ -1004,7 +1122,7 @@
                         </div>
                     )}
 
-                    {/* Tab 3: Analysis (Updated for V22.0 Goals) */}
+                    {/* Tab 3: Analysis */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1126,7 +1244,7 @@
                         </div>
                     )}
 
-                    {/* Goal Input Modal (V22.2) */}
+                    {/* Goal Input Modal */}
                     {editGoal && (
                         <GoalInputModal 
                             headerTitle={editGoal.id ? '編輯目標' : '新增目標'}
@@ -1255,7 +1373,7 @@
                     {showSopModal && <SopDetailsModal sopDetails={sopDetails} setSopDetails={setSopDetails} onClose={() => { playSfx('pop'); setShowSopModal(false); }} playSfx={playSfx} />}
                     {showDateModal && (<DateRangeModal currentDates={customDates} onConfirm={(s, e) => { playSfx('success'); setCustomDates({ start: s, end: e }); setTimeRange('CUSTOM'); setShowDateModal(false); }} onClose={() => { playSfx('pop'); setShowDateModal(false); }} />)}
                     
-                    {/* Add Item Modal (Updated with Formatted Input) */}
+                    {/* Add Item Modal */}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
                     <div className="space-y-4 mb-6">
                         {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
