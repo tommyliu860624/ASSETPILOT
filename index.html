@@ -356,12 +356,11 @@
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
             const scrollContainerRef = useRef(null);
-            const isScrolling = useRef(false);
             
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
                 
-                // Deduplicate daily records to keep only the latest per day (Fix for chart glitches)
+                // 去重：確保同一天只有最新的一筆資料
                 const dailyGroups = {};
                 history.forEach(item => {
                     dailyGroups[item.date] = item; 
@@ -406,57 +405,10 @@
                 });
             }, [filteredData, timeRange]);
 
-            // 動態擷取「可見視窗」並計算 Y 軸範圍的邏輯
+            // 判斷不同視圖下的舒適點距
             let pointsPerScreen = 7;
             if (timeRange === '月') pointsPerScreen = 6;
             if (timeRange === '年') pointsPerScreen = 5;
-
-            const updateYAxis = useCallback(() => {
-                if (!scrollContainerRef.current || !chartInstance.current || displayData.length === 0) return;
-                const container = scrollContainerRef.current;
-                const scrollLeft = container.scrollLeft;
-                const clientWidth = container.clientWidth;
-                const scrollWidth = container.scrollWidth;
-
-                const scrollRatioLeft = scrollLeft / scrollWidth;
-                const scrollRatioRight = (scrollLeft + clientWidth) / scrollWidth;
-
-                const totalPoints = displayData.length;
-                let startIndex = Math.floor(scrollRatioLeft * totalPoints);
-                let endIndex = Math.ceil(scrollRatioRight * totalPoints);
-
-                startIndex = Math.max(0, startIndex - 1);
-                endIndex = Math.min(totalPoints - 1, endIndex + 1);
-
-                const visibleData = displayData.slice(startIndex, endIndex + 1);
-
-                if (visibleData.length > 0) {
-                    const maxVal = Math.max(...visibleData);
-                    const minVal = Math.min(...visibleData);
-                    const range = maxVal - minVal;
-                    const padding = range === 0 ? (maxVal * 0.05 || 10) : (range * 0.2);
-
-                    const newMin = Math.max(0, minVal - padding);
-                    const newMax = maxVal + padding;
-
-                    const chartY = chartInstance.current.options.scales.y;
-                    if (Math.abs(chartY.min - newMin) > (range * 0.02) || Math.abs(chartY.max - newMax) > (range * 0.02)) {
-                        chartY.min = newMin;
-                        chartY.max = newMax;
-                        chartInstance.current.update('none'); 
-                    }
-                }
-            }, [displayData]);
-
-            const handleScroll = () => {
-                if (!isScrolling.current) {
-                    window.requestAnimationFrame(() => {
-                        updateYAxis();
-                        isScrolling.current = false;
-                    });
-                    isScrolling.current = true;
-                }
-            };
 
             useEffect(() => {
                 if (chartInstance.current) chartInstance.current.destroy();
@@ -470,11 +422,13 @@
                 const pointBorders = displayData.map((_, i) => i === displayData.length - 1 ? color : color);
                 const pointBorderWidths = displayData.map((_, i) => i === displayData.length - 1 ? 3 : 0);
 
-                const initialVisibleData = displayData.slice(-Math.max(pointsPerScreen, 1));
-                const initialMax = initialVisibleData.length > 0 ? Math.max(...initialVisibleData) : 0;
-                const initialMin = initialVisibleData.length > 0 ? Math.min(...initialVisibleData) : 0;
-                const range = initialMax - initialMin;
-                const padding = range === 0 ? (initialMax * 0.05 || 10) : (range * 0.2);
+                // --- 改回基於「全局資料」的上下限，保持視覺比例的絕對一致性 ---
+                const maxVal = displayData.length > 0 ? Math.max(...displayData) : 0;
+                const minVal = displayData.length > 0 ? Math.min(...displayData) : 0;
+                const range = maxVal - minVal;
+                
+                // 增加 15% 的彈性留白空間，確保不管怎麼滑都不會爆框或貼邊
+                const padding = range === 0 ? (maxVal * 0.05 || 10) : (range * 0.15);
 
                 chartInstance.current = new Chart(ctx, { 
                     type: 'line', 
@@ -515,31 +469,27 @@
                             y: { 
                                 display: false, 
                                 grid: { color: '#1e293b' },
-                                min: Math.max(0, initialMin - padding),
-                                max: initialMax + padding
+                                // 使用全局的 min / max 搭配 padding
+                                min: Math.max(0, minVal - padding),
+                                max: maxVal + padding
                             } 
                         },
-                        layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } }
+                        // 給予上下一點佈局留白，防止標籤被切斷
+                        layout: { padding: { left: 10, right: 20, top: 10, bottom: 10 } }
                     } 
                 });
                 
                 if (scrollContainerRef.current) {
-                    const el = scrollContainerRef.current;
-                    el.classList.remove('scroll-smooth');
-                    el.scrollLeft = el.scrollWidth;
-                    setTimeout(() => {
-                        if(el) el.classList.add('scroll-smooth');
-                    }, 50);
+                    scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
                 }
-                setTimeout(updateYAxis, 100);
 
-            }, [filteredData, displayData, labels, mode, updateYAxis, pointsPerScreen]);
+            }, [filteredData, displayData, labels, mode, pointsPerScreen]);
 
             const calculatedWidth = Math.max(100, (displayData.length / Math.max(1, pointsPerScreen)) * 100);
 
             return (
                 <div className={`w-full h-48 flex transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
-                    <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 h-full overflow-x-auto no-scrollbar relative scroll-smooth">
+                    <div ref={scrollContainerRef} className="flex-1 h-full overflow-x-auto no-scrollbar relative scroll-smooth">
                         <div style={{ width: `${calculatedWidth}%`, height: '100%' }}>
                             <canvas ref={chartRef} />
                         </div>
@@ -936,6 +886,8 @@
                             if (price !== s.price) {
                                 reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
                                 updatedS.price = price;
+                            } else {
+                                reportLogs.push({ label: updatedS.name, value: `無變動 (${price.toFixed(2)})`, diff: 0 });
                             }
                         } else {
                             failedCount++;
@@ -958,6 +910,8 @@
                             if (price !== s.price) {
                                 reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
                                 updatedS.price = price;
+                            } else {
+                                reportLogs.push({ label: updatedS.name, value: `無變動 (${price.toFixed(2)})`, diff: 0 });
                             }
                         } else {
                             failedCount++;
