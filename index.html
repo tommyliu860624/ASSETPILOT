@@ -52,11 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.6.0'; // Updated: Added collapsible monthly reports
-
-        // --- CLOUDFLARE WORKER URL ---
-        // 這是你剛剛建立的專屬代理伺服器網址
-        const PROXY_URL = 'https://assetpilot-proxy.tommyliu860624.workers.dev/';
+        const APP_VERSION = '23.9.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -88,6 +84,8 @@
         // --- Helper Functions ---
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0 }).format(amount).replace('TWD', 'NTD');
         const formatForeign = (amount, currency) => new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD', currencyDisplay: 'code' }).format(amount);
+        const formatDiff = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0, signDisplay: 'always' }).format(amount).replace('TWD', 'NTD');
+        
         const formatNumberInput = (val) => {
             if (!val && val !== 0) return '';
             const parts = val.toString().replace(/,/g, '').split('.');
@@ -358,25 +356,32 @@
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
             const scrollContainerRef = useRef(null);
+            const isScrolling = useRef(false);
             
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
-                const parseDate = (str) => new Date(str.replace(/-/g, '/')); 
-                let chartHistory = [...history];
-                chartHistory.sort((a, b) => a.date.localeCompare(b.date));
+                
+                // Deduplicate daily records to keep only the latest per day (Fix for chart glitches)
+                const dailyGroups = {};
+                history.forEach(item => {
+                    dailyGroups[item.date] = item; 
+                });
+                const chartHistory = Object.values(dailyGroups).sort((a, b) => a.date.localeCompare(b.date));
+                
                 let rangeData = [];
                 if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
-                     const s = parseDate(customDates.start); const e = parseDate(customDates.end);
-                     rangeData = chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
-                } else if (timeRange === '日') { rangeData = chartHistory;
-                } else { rangeData = chartHistory; }
+                     rangeData = chartHistory.filter(h => h.date >= customDates.start && h.date <= customDates.end);
+                } else { 
+                     rangeData = chartHistory; 
+                }
+
                 if (timeRange === '日' || timeRange === 'CUSTOM') return rangeData;
+                
                 const groups = {};
                 rangeData.forEach(item => {
-                    const d = parseDate(item.date);
                     let key;
-                    if (timeRange === '月') { key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; } 
-                    else if (timeRange === '年') { key = `${d.getFullYear()}`; }
+                    if (timeRange === '月') { key = item.date.substring(0, 7); } 
+                    else if (timeRange === '年') { key = item.date.substring(0, 4); }
                     groups[key] = item; 
                 });
                 return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
@@ -401,6 +406,58 @@
                 });
             }, [filteredData, timeRange]);
 
+            // 動態擷取「可見視窗」並計算 Y 軸範圍的邏輯
+            let pointsPerScreen = 7;
+            if (timeRange === '月') pointsPerScreen = 6;
+            if (timeRange === '年') pointsPerScreen = 5;
+
+            const updateYAxis = useCallback(() => {
+                if (!scrollContainerRef.current || !chartInstance.current || displayData.length === 0) return;
+                const container = scrollContainerRef.current;
+                const scrollLeft = container.scrollLeft;
+                const clientWidth = container.clientWidth;
+                const scrollWidth = container.scrollWidth;
+
+                const scrollRatioLeft = scrollLeft / scrollWidth;
+                const scrollRatioRight = (scrollLeft + clientWidth) / scrollWidth;
+
+                const totalPoints = displayData.length;
+                let startIndex = Math.floor(scrollRatioLeft * totalPoints);
+                let endIndex = Math.ceil(scrollRatioRight * totalPoints);
+
+                startIndex = Math.max(0, startIndex - 1);
+                endIndex = Math.min(totalPoints - 1, endIndex + 1);
+
+                const visibleData = displayData.slice(startIndex, endIndex + 1);
+
+                if (visibleData.length > 0) {
+                    const maxVal = Math.max(...visibleData);
+                    const minVal = Math.min(...visibleData);
+                    const range = maxVal - minVal;
+                    const padding = range === 0 ? (maxVal * 0.05 || 10) : (range * 0.2);
+
+                    const newMin = Math.max(0, minVal - padding);
+                    const newMax = maxVal + padding;
+
+                    const chartY = chartInstance.current.options.scales.y;
+                    if (Math.abs(chartY.min - newMin) > (range * 0.02) || Math.abs(chartY.max - newMax) > (range * 0.02)) {
+                        chartY.min = newMin;
+                        chartY.max = newMax;
+                        chartInstance.current.update('none'); 
+                    }
+                }
+            }, [displayData]);
+
+            const handleScroll = () => {
+                if (!isScrolling.current) {
+                    window.requestAnimationFrame(() => {
+                        updateYAxis();
+                        isScrolling.current = false;
+                    });
+                    isScrolling.current = true;
+                }
+            };
+
             useEffect(() => {
                 if (chartInstance.current) chartInstance.current.destroy();
                 const ctx = chartRef.current.getContext('2d');
@@ -412,6 +469,12 @@
                 const pointColors = displayData.map((_, i) => i === displayData.length - 1 ? '#ffffff' : color);
                 const pointBorders = displayData.map((_, i) => i === displayData.length - 1 ? color : color);
                 const pointBorderWidths = displayData.map((_, i) => i === displayData.length - 1 ? 3 : 0);
+
+                const initialVisibleData = displayData.slice(-Math.max(pointsPerScreen, 1));
+                const initialMax = initialVisibleData.length > 0 ? Math.max(...initialVisibleData) : 0;
+                const initialMin = initialVisibleData.length > 0 ? Math.min(...initialVisibleData) : 0;
+                const range = initialMax - initialMin;
+                const padding = range === 0 ? (initialMax * 0.05 || 10) : (range * 0.2);
 
                 chartInstance.current = new Chart(ctx, { 
                     type: 'line', 
@@ -449,23 +512,34 @@
                                 grid: { display: false, drawBorder: false }, 
                                 ticks: { color: '#64748b', font: {size: 10}, maxRotation: 0, autoSkip: false } 
                             }, 
-                            y: { display: false, grid: { color: '#1e293b' } } 
+                            y: { 
+                                display: false, 
+                                grid: { color: '#1e293b' },
+                                min: Math.max(0, initialMin - padding),
+                                max: initialMax + padding
+                            } 
                         },
                         layout: { padding: { left: 10, right: 20, top: 20, bottom: 10 } }
                     } 
                 });
                 
                 if (scrollContainerRef.current) {
-                    scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+                    const el = scrollContainerRef.current;
+                    el.classList.remove('scroll-smooth');
+                    el.scrollLeft = el.scrollWidth;
+                    setTimeout(() => {
+                        if(el) el.classList.add('scroll-smooth');
+                    }, 50);
                 }
+                setTimeout(updateYAxis, 100);
 
-            }, [filteredData, displayData, labels, mode]);
+            }, [filteredData, displayData, labels, mode, updateYAxis, pointsPerScreen]);
 
-            const calculatedWidth = Math.max(100, (displayData.length / 7) * 100);
+            const calculatedWidth = Math.max(100, (displayData.length / Math.max(1, pointsPerScreen)) * 100);
 
             return (
                 <div className={`w-full h-48 flex transition-all duration-300 ${isPrivacyMode ? 'blur-content' : 'no-blur'}`}>
-                    <div ref={scrollContainerRef} className="flex-1 h-full overflow-x-auto no-scrollbar relative">
+                    <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 h-full overflow-x-auto no-scrollbar relative scroll-smooth">
                         <div style={{ width: `${calculatedWidth}%`, height: '100%' }}>
                             <canvas ref={chartRef} />
                         </div>
@@ -482,10 +556,10 @@
             const handleSelect = (type) => { playSfx('tap'); setSelected(selected === type ? null : type); };
             return (
                 <div className={`w-full transition-all duration-300 ${isPrivacyMode ? 'blur-sm' : ''}`}>
-                    <div className="h-6 w-full flex rounded-full overflow-hidden cursor-pointer mb-3">
-                        <div style={{ width: `${pCash}%` }} className="bg-emerald-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('cash')}></div>
-                        <div style={{ width: `${pTw}%` }} className="bg-sky-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('tw')}></div>
-                        <div style={{ width: `${pUs}%` }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('us')}></div>
+                    <div className="h-6 w-full flex rounded-full overflow-hidden cursor-pointer mb-3 bg-slate-800">
+                        {pCash > 0 && <div style={{ flexGrow: pCash }} className="bg-emerald-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('cash')}></div>}
+                        {pTw > 0 && <div style={{ flexGrow: pTw }} className="bg-sky-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('tw')}></div>}
+                        {pUs > 0 && <div style={{ flexGrow: pUs }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('us')}></div>}
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
                         <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{displayVal(cash)}</div>}</div>
@@ -507,6 +581,7 @@
                 </div>
             );
         };
+
         const DateRangeModal = ({ currentDates, onConfirm, onClose }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
@@ -518,6 +593,7 @@
                 </div>
             );
         };
+
         const SopInputModal = ({ title, defaultValue, onConfirm, onClose }) => {
             return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
@@ -594,15 +670,31 @@
             );
         };
 
-        // --- UPDATED DATA FETCHING HELPERS WITH TIMEOUT & PRIVATE PROXY (V23.5) ---
+        const BreakdownItem = ({ label, color, value, diff, isPrivacyMode }) => (
+            <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-700/50 flex flex-col">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                    <div className={`w-2 h-2 rounded-full ${color}`}></div>
+                    <span className="text-[10px] text-slate-400 font-bold">{label}</span>
+                </div>
+                <div className="text-xs font-mono text-white mb-0.5">
+                    {isPrivacyMode ? '****' : formatMoney(value || 0)}
+                </div>
+                <div className={`text-[10px] font-mono ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {diff > 0 ? '+' : ''}{isPrivacyMode ? '****' : formatMoney(diff || 0)}
+                </div>
+            </div>
+        );
+
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        // 帶有強制超時 (Timeout) 的 Fetch 封裝
-        const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
+        const fetchWithTimeout = async (url, options = {}, timeoutMs = 3500) => {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), timeoutMs);
             try {
-                const response = await fetch(url, { ...options, signal: controller.signal });
+                const response = await fetch(url, {
+                    ...options,
+                    signal: controller.signal
+                });
                 clearTimeout(id);
                 return response;
             } catch (err) {
@@ -611,31 +703,70 @@
             }
         };
 
-        // 強韌的 Yahoo 報價獲取引擎 (透過你專屬的 Cloudflare Worker)
+        const fetchExchangeRatesAPI = async (currencies) => {
+            try {
+                const res = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' }, 4000);
+                if (!res.ok) return null;
+                const data = await res.json();
+                const twdRate = data.rates['TWD'];
+                let newRates = {};
+                currencies.forEach(cur => {
+                    if (cur === 'TWD') return;
+                    if (cur === 'USD') newRates[cur] = twdRate;
+                    else if (data.rates[cur]) newRates[cur] = twdRate / data.rates[cur];
+                });
+                return newRates;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        // Yahoo 報價獲取引擎 (帶 3 秒強制中斷，專屬代理優先)
         const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
-            const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
             
-            // 使用你的專屬 Worker 代理，保證不會被封鎖
-            const proxyUrl = `${PROXY_URL}?url=${encodeURIComponent(endpoint)}`;
+            const endpoints = [
+                `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`,
+                `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`
+            ];
+            
+            const proxies = [
+                (url) => `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(url)}`,
+                (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+                (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`
+            ];
 
-            try {
-                const res = await fetchWithTimeout(proxyUrl, { cache: "no-store" }, 5000);
-                if (res.ok) {
-                    const data = await res.json();
-                    const meta = data?.chart?.result?.[0]?.meta;
-                    if (meta && meta.regularMarketPrice) {
-                        return { 
-                            price: meta.regularMarketPrice, 
-                            name: meta.longName || meta.shortName || null 
-                        };
+            for (const proxy of proxies) {
+                for (const endpoint of endpoints) {
+                    try {
+                        const targetUrl = proxy(endpoint);
+                        const res = await fetchWithTimeout(targetUrl, { cache: "no-store" }, 3000);
+                        if (!res.ok) continue;
+                        
+                        let data;
+                        if (targetUrl.includes('allorigins')) {
+                            const json = await res.json();
+                            if (!json.contents) continue;
+                            data = JSON.parse(json.contents);
+                        } else {
+                            data = await res.json();
+                        }
+                        
+                        const meta = data?.chart?.result?.[0]?.meta;
+                        if (meta && meta.regularMarketPrice) {
+                            return { 
+                                price: meta.regularMarketPrice, 
+                                name: meta.longName || meta.shortName || null 
+                            };
+                        }
+                    } catch (e) {
+                        // 逾時或拒絕連線，自動換下一個
                     }
                 }
-            } catch (e) {
-                console.warn(`Fetch failed for ${ticker}`, e);
             }
             return { price: null, name: null };
         };
+
 
         const App = () => {
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
@@ -668,13 +799,38 @@
             const [showSettings, setShowSettings] = useState(false); 
             const [showDateModal, setShowDateModal] = useState(false);
             const [isUpdating, setIsUpdating] = useState(false);
-            const [updateProgressText, setUpdateProgressText] = useState(''); // 即時進度顯示
+            const [updateProgressText, setUpdateProgressText] = useState('');
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
             const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
+            const [updateAvailable, setUpdateAvailable] = useState(null); 
             
+            // Yearly Report State
+            const [expandedYears, setExpandedYears] = useState([new Date().getFullYear().toString()]);
+            const [expandedMonths, setExpandedMonths] = useState([]);
+
             const currentYear = new Date().getFullYear();
+
+            useEffect(() => {
+                const checkUpdate = async () => {
+                    try {
+                        const response = await fetch(window.location.href, { cache: "no-store" });
+                        if (response.ok) {
+                            const text = await response.text();
+                            const match = text.match(/const APP_VERSION = '([^']+)';/);
+                            if (match && match[1]) {
+                                const remoteVersion = match[1];
+                                if (remoteVersion !== APP_VERSION) {
+                                    setUpdateAvailable(remoteVersion);
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                };
+                const timer = setTimeout(checkUpdate, 2000);
+                return () => clearTimeout(timer);
+            }, []);
 
             useEffect(() => { const seen = localStorage.getItem('ap_tutorial_seen'); if (!seen) { setShowWelcome(true); } }, []);
             useEffect(() => { if (showTutorial) { const step = TUTORIAL_STEPS[tutorialStep]; if (step.tab && step.tab !== activeTab) { setActiveTab(step.tab); } } }, [showTutorial, tutorialStep]);
@@ -708,7 +864,6 @@
             const totalForeignAssetsTWD = totalForeignStocksTWD + totalForeignCashTWD;
             const activeCurrencies = useMemo(() => { const currencies = new Set(['USD']); foreignStocks.forEach(s => currencies.add(s.currency)); foreignCash.forEach(c => currencies.add(c.currency)); return Array.from(currencies); }, [foreignStocks, foreignCash]);
             const displayMoney = (val) => isPrivacyMode ? '****' : formatMoney(val);
-            const displayForeign = (val, cur) => isPrivacyMode ? '****' : formatForeign(val, cur);
 
             useEffect(() => {
                 if (isNaN(totalNetWorth) || (totalNetWorth === 0 && history.length === 0)) return;
@@ -718,33 +873,30 @@
                 if (history.length === 0) { setHistory([newRecord]); } else if (lastRecord.date !== today) { setHistory(prev => [...prev, newRecord]); } else if (Math.abs(lastRecord.total - totalNetWorth) > 100) { setHistory(prev => [...prev.slice(0, -1), newRecord]); }
             }, [totalNetWorth]);
 
-            const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
-            const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
+            const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYearStr = new Date().getFullYear().toString(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear().toString() === currentYearStr); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             
-            // --- NEW: State for expanded monthly reports ---
-            const [expandedMonths, setExpandedMonths] = useState(() => {
-                // Initialize with the most recent month open by default if data exists
-                const data = Object.values(monthlyReportData).sort((a, b) => b.date.localeCompare(a.date));
-                return data.length > 0 ? [data[0].date.substring(0, 7)] : [];
-            });
+            const monthlyReportData = useMemo(() => { 
+                const report = {}; 
+                history.forEach(rec => { 
+                    const month = rec.date.substring(0, 7); 
+                    if (!report[month] || rec.date > report[month].date) report[month] = rec; 
+                }); 
+                return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); 
+            }, [history]);
 
-            // Ensure the latest month is always open when data changes and nothing is open
-            useEffect(() => {
-                if (monthlyReportData.length > 0 && expandedMonths.length === 0) {
-                     setExpandedMonths([monthlyReportData[0].date.substring(0, 7)]);
-                }
+            const yearlyReportData = useMemo(() => {
+                const yearlyGroups = {};
+                monthlyReportData.forEach(m => {
+                    const year = m.date.substring(0, 4);
+                    if (!yearlyGroups[year]) yearlyGroups[year] = [];
+                    yearlyGroups[year].push(m);
+                });
+                return Object.entries(yearlyGroups).map(([year, reports]) => ({year, reports})).sort((a,b) => b.year.localeCompare(a.year));
             }, [monthlyReportData]);
 
-            const toggleMonth = (monthStr) => {
-                playSfx('switch');
-                setExpandedMonths(prev => 
-                    prev.includes(monthStr) 
-                        ? prev.filter(m => m !== monthStr) 
-                        : [...prev, monthStr]
-                );
-            };
-            
-            // --- UPDATED fetchLiveData (透明狀態回報與容錯) ---
+            const toggleYear = (year) => { playSfx('tap'); setExpandedYears(prev => prev.includes(year) ? prev.filter(y => y !== year) : [...prev, year]); };
+            const toggleMonth = (month) => { playSfx('tap'); setExpandedMonths(prev => prev.includes(month) ? prev.filter(m => m !== month) : [...prev, month]); };
+
             const fetchLiveData = async () => {
                 setIsUpdating(true);
                 playSfx('tap');
@@ -754,29 +906,25 @@
                 let failedCount = 0;
                 
                 try {
-                    // 1. 匯率分流處理：改回 Yahoo 即時報價 (因為有了專屬 Cloudflare 代理，可以大膽抓取即時資料)
+                    // 1. 匯率
                     setUpdateProgressText('正在獲取最新匯率...');
-                    for (const currency of activeCurrencies) {
-                        if (currency === 'TWD') continue;
-                        const ticker = currency === 'USD' ? 'TWD=X' : `${currency}TWD=X`;
-                        const { price: rate } = await fetchYahooData(ticker);
-                        if (rate !== null) {
+                    const apiRates = await fetchExchangeRatesAPI(activeCurrencies);
+                    if (apiRates) {
+                        for (const currency of activeCurrencies) {
+                            if (currency === 'TWD' || !apiRates[currency]) continue;
                             const oldRate = rates[currency] || 0;
-                            if (Math.abs(rate - oldRate) > 0.0001) {
-                                reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(4)} -> ${rate.toFixed(4)}`, diff: rate - oldRate });
-                                newRates[currency] = rate;
-                            } else {
-                                reportLogs.push({ label: `${currency} 匯率`, value: `${rate.toFixed(4)} (無變動)`, diff: 0 });
+                            const newRate = apiRates[currency];
+                            if (Math.abs(newRate - oldRate) > 0.001) {
+                                reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${newRate.toFixed(2)}`, diff: newRate - oldRate });
+                                newRates[currency] = newRate;
                             }
-                        } else {
-                            failedCount++;
-                            reportLogs.push({ label: `${currency} 匯率`, value: '伺服器未回應 (保持原設定)', isError: true, diff: 0 });
                         }
-                        await delay(200); // 禮貌性延遲
+                    } else {
+                        reportLogs.push({ label: '匯率同步', value: 'API 逾時，保留原設定', isError: true });
                     }
                     setRates(newRates);
 
-                    // 2. 海外股票隊列處理
+                    // 2. 海外股票
                     let newForeignStocks = [];
                     for (let i = 0; i < foreignStocks.length; i++) {
                         const s = foreignStocks[i];
@@ -788,19 +936,17 @@
                             if (price !== s.price) {
                                 reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
                                 updatedS.price = price;
-                            } else {
-                                reportLogs.push({ label: updatedS.name, value: `${price.toFixed(2)} (無變動)`, diff: 0 });
                             }
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true, diff: 0 });
+                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true });
                         }
                         newForeignStocks.push(updatedS);
                         await delay(200);
                     }
                     setForeignStocks(newForeignStocks);
 
-                    // 3. 台股現貨隊列處理
+                    // 3. 台股
                     let newTwStocks = [];
                     for (let i = 0; i < twStocks.length; i++) {
                         const s = twStocks[i];
@@ -812,19 +958,17 @@
                             if (price !== s.price) {
                                 reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - s.price });
                                 updatedS.price = price;
-                            } else {
-                                reportLogs.push({ label: updatedS.name, value: `${price.toFixed(2)} (無變動)`, diff: 0 });
                             }
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true, diff: 0 });
+                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true });
                         }
                         newTwStocks.push(updatedS);
                         await delay(200);
                     }
                     setTwStocks(newTwStocks);
 
-                    // 4. 計算總和與收尾
+                    // 4. 收尾
                     const newTwTotal = newTwStocks.reduce((acc, curr) => acc + (curr.shares * curr.price), 0);
                     const newForeignStocksTotal = newForeignStocks.reduce((acc, curr) => acc + (curr.shares * curr.price * (newRates[curr.currency]||1)), 0);
                     const newForeignCashTotal = foreignCash.reduce((acc, curr) => acc + (curr.balance * (newRates[curr.currency]||1)), 0);
@@ -838,7 +982,7 @@
                     setUpdateResults(reportLogs);
                     
                     if (failedCount > 0) {
-                        triggerToast(`同步完成（${failedCount} 項目未獲取最新報價）`);
+                        triggerToast(`同步完成（${failedCount} 檔未獲取到最新報價）`);
                     } else {
                         triggerToast('即時報價更新完成');
                         playSfx('success');
@@ -852,31 +996,18 @@
                 }
             };
 
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.5_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.9_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
-            const openEditItem = (itemData) => { 
-                playSfx('pop'); 
-                setDeleteConfirm(false); 
-                setEditItem(itemData);
-            };
-
+            const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
             const performDelete = (id, type) => { if (!id) return; if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); setEditItem(null); playSfx('delete'); triggerToast('刪除成功'); };
             
-            const openAddItem = (type) => {
-                playSfx('pop');
-                setAddItemType(type);
-                setAddForm({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
-            };
-
-            const handleAddFormChange = (field, value) => {
-                 setAddForm(prev => ({ ...prev, [field]: value }));
-            };
+            const openAddItem = (type) => { playSfx('pop'); setAddItemType(type); setAddForm({ main: '', sub: '', val: 0, cur: 'USD', note: '' }); };
+            const handleAddFormChange = (field, value) => { setAddForm(prev => ({ ...prev, [field]: value })); };
 
             const handleAddItemSubmit = async () => {
                 const { main, sub, val, cur, note } = addForm;
                 const type = addItemType;
-
                 if (!main || val === null) return;
                 playSfx('tap');
 
@@ -919,9 +1050,7 @@
                     return updated; 
                 }; 
                 if(type==='cash') setCash(p => p.map(updater)); else if(type==='cashForeign') setForeignCash(p => p.map(updater)); else if(type==='stockTW') setTwStocks(p => p.map(updater)); else setForeignStocks(p => p.map(updater)); 
-                setEditItem(null); 
-                playSfx('success'); 
-                triggerToast('更新成功'); 
+                setEditItem(null); playSfx('success'); triggerToast('更新成功'); 
             };
 
             const toggleSop = (id) => { playSfx('tap'); setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
@@ -930,47 +1059,19 @@
             const editSopText = (id, text) => { playSfx('pop'); setSopTaskInput({ id, text }); };
             const handleSaveSopTask = (text) => { if (text.trim() === '') return; if (sopTaskInput.id) { setSopList(prev => prev.map(s => s.id === sopTaskInput.id ? { ...s, text } : s)); triggerToast('任務已更新'); } else { setSopList([...sopList, { id: Date.now(), text, completed: false }]); triggerToast('任務已新增'); } setSopTaskInput(null); playSfx('success'); };
             
-            const handleAddGoal = (title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals([...goals, { 
-                    id: Date.now(), 
-                    title, 
-                    target: parseFloat(target), 
-                    linkedAccounts: linkedAccounts || ['total_assets'], 
-                    deadline: deadline || null 
-                }]); 
-            };
-            
-            const handleUpdateGoal = (id, title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals(prev => prev.map(g => g.id === id ? { 
-                    ...g, 
-                    title, 
-                    target: parseFloat(target),
-                    linkedAccounts: linkedAccounts || ['total_assets'],
-                    deadline: deadline || null
-                } : g)); 
-                setEditGoal(null); 
-            };
-
+            const handleAddGoal = (title, target, linkedAccounts, deadline) => { playSfx('success'); setGoals([...goals, { id: Date.now(), title, target: parseFloat(target), linkedAccounts: linkedAccounts || ['total_assets'], deadline: deadline || null }]); };
+            const handleUpdateGoal = (id, title, target, linkedAccounts, deadline) => { playSfx('success'); setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target), linkedAccounts: linkedAccounts || ['total_assets'], deadline: deadline || null } : g)); setEditGoal(null); };
             const handleDeleteGoal = (id) => { if(confirm('刪除此目標？')) { playSfx('delete'); setGoals(prev => prev.filter(g => g.id !== id)); } };
             
             const moveSection = (index, direction) => { 
                 playSfx('tap'); 
                 const newOrder = [...walletOrder]; 
                 let swapIdx = -1;
-                
                 if (direction === 'up' && index > 0) swapIdx = index - 1;
                 else if (direction === 'down' && index < newOrder.length - 1) swapIdx = index + 1;
-
                 if (swapIdx !== -1) {
                     [newOrder[index], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[index]];
-                    
-                    if (document.startViewTransition) {
-                        document.startViewTransition(() => setWalletOrder(newOrder));
-                    } else {
-                        setWalletOrder(newOrder);
-                    }
+                    if (document.startViewTransition) { document.startViewTransition(() => setWalletOrder(newOrder)); } else { setWalletOrder(newOrder); }
                 }
             };
 
@@ -978,18 +1079,11 @@
                 playSfx('tap');
                 const newGoals = [...goals];
                 let swapIdx = -1;
-                
                 if (direction === 'up' && index > 0) swapIdx = index - 1;
                 else if (direction === 'down' && index < newGoals.length - 1) swapIdx = index + 1;
-
                 if (swapIdx !== -1) {
                     [newGoals[index], newGoals[swapIdx]] = [newGoals[swapIdx], newGoals[index]];
-                    
-                    if (document.startViewTransition) {
-                        document.startViewTransition(() => setGoals(newGoals));
-                    } else {
-                        setGoals(newGoals);
-                    }
+                    if (document.startViewTransition) { document.startViewTransition(() => setGoals(newGoals)); } else { setGoals(newGoals); }
                 }
             };
 
@@ -1122,6 +1216,7 @@
                     )}
 
                     {/* Tab 3: Analysis */}
+                    {}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1153,76 +1248,123 @@
                                 </div>
                             </div>
                             
-                            {/* Monthly Report */}
+                            {/* Monthly & Yearly Reports */}
                             <div>
-                                <h3 className="text-xs text-slate-400 font-bold uppercase mb-3">月度戰報</h3>
-                                <div className="glass-panel rounded-xl p-4 mb-4 border border-purple-500/50 shadow-lg shadow-purple-900/10">
-                                    <h3 className="text-slate-400 text-xs uppercase mb-1">年度戰況總結 ({currentYear})</h3><div className="text-2xl font-bold text-white mb-2">{ytdStats.diff > 0 ? '+' : ''}{isPrivacyMode ? '****' : formatMoney(ytdStats.diff)}<span className={`text-sm font-normal ml-2 ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{ytdStats.diff > 0 ? '+' : ''}{ytdStats.percent.toFixed(2)}%</span></div>
-                                    <div className="text-xs text-slate-500">累積盈虧 (YTD)</div>
+                                <h3 className="text-xs text-slate-400 font-bold uppercase mb-3">戰報分析</h3>
+                                <div className="glass-panel rounded-xl p-4 mb-5 border border-blue-500/30 shadow-lg shadow-blue-900/10">
+                                    <h3 className="text-slate-400 text-xs uppercase mb-1">本年度 (YTD) 總結</h3>
+                                    <div className="text-2xl font-bold text-white mb-2">
+                                        {ytdStats.diff > 0 ? '+' : ''}{isPrivacyMode ? '****' : formatMoney(ytdStats.diff)}
+                                        <span className={`text-sm font-normal ml-2 ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {ytdStats.diff > 0 ? '+' : ''}{ytdStats.percent.toFixed(2)}%
+                                        </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">較年初資產增減</div>
                                 </div>
-                                <div className="space-y-3">
-                                    {monthlyReportData.map((report, idx) => { 
-                                        const prevMonth = monthlyReportData[idx + 1]; 
-                                        const diff = prevMonth ? report.total - prevMonth.total : 0; 
-                                        const diffPercent = prevMonth && prevMonth.total !== 0 ? (diff / prevMonth.total * 100).toFixed(2) : 0; 
-                                        const monthStr = report.date.substring(0, 7);
-                                        const isExpanded = expandedMonths.includes(monthStr);
+                                
+                                <div className="space-y-4">
+                                    {yearlyReportData.map(({ year, reports }) => {
+                                        const isYearExpanded = expandedYears.includes(year);
+                                        const latestReport = reports[0];
+                                        const prevYearStr = (parseInt(year) - 1).toString();
+                                        const prevYearData = yearlyReportData.find(y => y.year === prevYearStr);
+                                        let yearlyDiff = 0;
+                                        let yearlyPercent = 0;
+                                        if (prevYearData && prevYearData.reports.length > 0) {
+                                            const prevYearLastReport = prevYearData.reports[0];
+                                            yearlyDiff = latestReport.total - prevYearLastReport.total;
+                                            yearlyPercent = prevYearLastReport.total ? (yearlyDiff / prevYearLastReport.total) * 100 : 0;
+                                        } else {
+                                            const oldestReport = reports[reports.length - 1];
+                                            yearlyDiff = latestReport.total - oldestReport.total;
+                                            yearlyPercent = oldestReport.total ? (yearlyDiff / oldestReport.total) * 100 : 0;
+                                        }
 
                                         return (
-                                            <div key={report.date} className="glass-panel rounded-xl overflow-hidden transition-all duration-300">
-                                                {/* Header / Toggle Button */}
+                                            <div key={year} className="glass-panel rounded-2xl overflow-hidden border border-slate-700/50 shadow-md">
                                                 <button 
-                                                    onClick={() => toggleMonth(monthStr)}
-                                                    className="w-full p-4 flex justify-between items-center text-left hover:bg-slate-800/50 transition-colors"
+                                                    onClick={() => toggleYear(year)}
+                                                    className={`w-full p-4 flex justify-between items-center text-left transition-colors ${isYearExpanded ? 'bg-slate-800/80 border-b border-slate-700/50' : 'bg-slate-800/40 hover:bg-slate-800/60'}`}
                                                 >
-                                                    <div>
-                                                        <div className="text-sm text-slate-300 font-bold flex items-center gap-2">
-                                                            {monthStr}
-                                                            {idx === 0 && <span className="text-[10px] bg-blue-600/30 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30">最新</span>}
-                                                        </div>
-                                                        <div className="text-xs text-slate-500 mt-1">結算日: {report.date}</div>
-                                                    </div>
                                                     <div className="flex items-center gap-3">
-                                                        {/* Summary Badge visible when collapsed */}
-                                                        {!isExpanded && (
-                                                            <div className={`text-xs px-2 py-1 rounded-full bg-slate-900 border ${diff >= 0 ? 'text-emerald-400 border-emerald-900' : 'text-red-400 border-red-900'}`}>
-                                                                {diff >= 0 ? '+' : ''}{displayMoney(diff)}
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${isYearExpanded ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-700/50 text-slate-400'}`}>
+                                                            {year.slice(-2)}'
+                                                        </div>
+                                                        <div>
+                                                            <h3 className={`text-base font-bold ${isYearExpanded ? 'text-white' : 'text-slate-300'}`}>{year} 年度結算</h3>
+                                                            <p className="text-[10px] text-slate-500 mt-0.5">{reports.length} 個月紀錄</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {!isYearExpanded && (
+                                                            <div className="text-right">
+                                                                <div className="text-sm font-bold">{formatDiff(yearlyDiff)}</div>
+                                                                {yearlyPercent !== 0 && <div className={`text-[9px] ${yearlyDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>({yearlyDiff > 0 ? '+' : ''}{yearlyPercent.toFixed(1)}%)</div>}
                                                             </div>
                                                         )}
-                                                        <Icon 
-                                                            name="chevron-down" 
-                                                            className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
-                                                        />
+                                                        {isYearExpanded && <Icon name="chevron-down" className="w-4 h-4 text-blue-400 rotate-180 transition-transform duration-300" />}
                                                     </div>
                                                 </button>
 
-                                                {/* Expandable Content Area */}
-                                                <div 
-                                                    className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
-                                                >
-                                                    <div className="overflow-hidden">
-                                                        <div className="p-4 pt-0 border-t border-slate-700/50 mt-2">
-                                                            <div className="flex justify-between items-end mb-3 mt-3">
-                                                                <span className="text-xs text-slate-400">當月結算總資產</span>
-                                                                <span className="text-lg font-mono text-white">{displayMoney(report.total)}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-slate-700/30">
-                                                                <span className="text-xs text-slate-400">較上月結算</span>
-                                                                <div className="text-right">
-                                                                    <div className={`text-sm font-bold ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                                        {diff >= 0 ? '+' : ''}{displayMoney(diff)}
-                                                                    </div>
-                                                                    <div className={`text-[10px] ${diff >= 0 ? 'text-emerald-500/80' : 'text-red-500/80'}`}>
-                                                                        {diff >= 0 ? '+' : ''}{diffPercent}%
+                                                <div className={`transition-all duration-300 ease-in-out ${isYearExpanded ? 'max-h-[3000px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                                    <div className="p-3 space-y-3 bg-slate-900/50">
+                                                        {reports.map((report) => {
+                                                            const globalIdx = monthlyReportData.findIndex(r => r.date === report.date);
+                                                            const prevMonth = monthlyReportData[globalIdx + 1];
+                                                            
+                                                            const diffTotal = prevMonth ? report.total - prevMonth.total : 0;
+                                                            const diffPercent = prevMonth && prevMonth.total !== 0 ? (diffTotal / prevMonth.total * 100).toFixed(1) : 0;
+                                                            
+                                                            const diffCashTW = prevMonth ? (report.cashTW || 0) - (prevMonth.cashTW || 0) : 0;
+                                                            const diffStockTW = prevMonth ? (report.stockTW || 0) - (prevMonth.stockTW || 0) : 0;
+                                                            const diffCashForeign = prevMonth ? (report.cashForeign || 0) - (prevMonth.cashForeign || 0) : 0;
+                                                            const diffStockForeign = prevMonth ? (report.stockForeign || 0) - (prevMonth.stockForeign || 0) : 0;
+                                                            
+                                                            const monthStr = report.date.substring(0, 7);
+                                                            const isMonthExpanded = expandedMonths.includes(monthStr);
+
+                                                            return (
+                                                                <div key={report.date} className="bg-slate-800/80 rounded-xl border border-slate-700/50 overflow-hidden shadow-sm">
+                                                                    <button 
+                                                                        onClick={() => toggleMonth(monthStr)}
+                                                                        className="w-full p-4 flex justify-between items-center text-left hover:bg-slate-700/50 transition-colors"
+                                                                    >
+                                                                        <div>
+                                                                            <div className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                                                                {monthStr.replace('-', ' / ')}
+                                                                                {globalIdx === 0 && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase tracking-wider">最新</span>}
+                                                                            </div>
+                                                                            <div className="text-xs text-slate-400 font-mono mt-1">{displayMoney(report.total)}</div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-3 text-right">
+                                                                            <div>
+                                                                                <div className="text-sm font-bold">{formatDiff(diffTotal)}</div>
+                                                                                {diffTotal !== 0 && <div className={`text-[9px] ${diffTotal >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diffTotal > 0 ? '+' : ''}{diffPercent}%</div>}
+                                                                            </div>
+                                                                            <Icon name="chevron-down" className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${isMonthExpanded ? 'rotate-180 text-blue-400' : ''}`} />
+                                                                        </div>
+                                                                    </button>
+
+                                                                    <div className={`transition-all duration-300 ease-in-out ${isMonthExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                                                        <div className="p-4 pt-3 bg-slate-900/30 border-t border-slate-700/30">
+                                                                            <div className="text-[10px] text-slate-500 mb-3 flex items-center gap-1.5"><Icon name="pie-chart" className="w-3 h-3" /> 各大項目增減明細</div>
+                                                                            <div className="grid grid-cols-2 gap-3">
+                                                                                <BreakdownItem label="台幣現金" color="bg-emerald-500" value={report.cashTW} diff={diffCashTW} isPrivacyMode={isPrivacyMode} />
+                                                                                <BreakdownItem label="台股現貨" color="bg-sky-500" value={report.stockTW} diff={diffStockTW} isPrivacyMode={isPrivacyMode} />
+                                                                                <BreakdownItem label="外幣現金" color="bg-purple-400" value={report.cashForeign} diff={diffCashForeign} isPrivacyMode={isPrivacyMode} />
+                                                                                <BreakdownItem label="海外投資" color="bg-pink-500" value={report.stockForeign} diff={diffStockForeign} isPrivacyMode={isPrivacyMode} />
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                            </div>
-                                                        </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
                                             </div>
-                                        ); 
+                                        );
                                     })}
+                                    {yearlyReportData.length === 0 && <div className="text-slate-500 text-xs text-center py-4">目前尚無歷史戰報資料</div>}
                                 </div>
                             </div>
                         </div>
@@ -1237,6 +1379,13 @@
 
                     {/* Toast */}
                     <Toast message={toast.message} show={toast.show} />
+
+                    {/* Update Notification */}
+                    <UpdateNotification 
+                        show={!!updateAvailable} 
+                        newVersion={updateAvailable} 
+                        onUpdate={() => window.location.reload()} 
+                    />
 
                     {/* Welcome Modal */}
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
