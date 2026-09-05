@@ -52,7 +52,7 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.5.0'; // Updated: 顯示未變動的資產狀態 & 將匯率改回 Yahoo 即時報價
+        const APP_VERSION = '23.6.0'; // Updated: Added collapsible monthly reports
 
         // --- CLOUDFLARE WORKER URL ---
         // 這是你剛剛建立的專屬代理伺服器網址
@@ -721,6 +721,29 @@
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
             const monthlyReportData = useMemo(() => { const report = {}; history.forEach(rec => { const month = rec.date.substring(0, 7); if (!report[month] || rec.date > report[month].date) report[month] = rec; }); return Object.values(report).sort((a, b) => b.date.localeCompare(a.date)); }, [history]);
             
+            // --- NEW: State for expanded monthly reports ---
+            const [expandedMonths, setExpandedMonths] = useState(() => {
+                // Initialize with the most recent month open by default if data exists
+                const data = Object.values(monthlyReportData).sort((a, b) => b.date.localeCompare(a.date));
+                return data.length > 0 ? [data[0].date.substring(0, 7)] : [];
+            });
+
+            // Ensure the latest month is always open when data changes and nothing is open
+            useEffect(() => {
+                if (monthlyReportData.length > 0 && expandedMonths.length === 0) {
+                     setExpandedMonths([monthlyReportData[0].date.substring(0, 7)]);
+                }
+            }, [monthlyReportData]);
+
+            const toggleMonth = (monthStr) => {
+                playSfx('switch');
+                setExpandedMonths(prev => 
+                    prev.includes(monthStr) 
+                        ? prev.filter(m => m !== monthStr) 
+                        : [...prev, monthStr]
+                );
+            };
+            
             // --- UPDATED fetchLiveData (透明狀態回報與容錯) ---
             const fetchLiveData = async () => {
                 setIsUpdating(true);
@@ -1142,10 +1165,61 @@
                                         const prevMonth = monthlyReportData[idx + 1]; 
                                         const diff = prevMonth ? report.total - prevMonth.total : 0; 
                                         const diffPercent = prevMonth && prevMonth.total !== 0 ? (diff / prevMonth.total * 100).toFixed(2) : 0; 
+                                        const monthStr = report.date.substring(0, 7);
+                                        const isExpanded = expandedMonths.includes(monthStr);
+
                                         return (
-                                            <div key={report.date} className="glass-panel rounded-xl p-4 flex justify-between items-center">
-                                                <div><div className="text-sm text-slate-300 font-bold">{report.date.substring(0, 7)}</div><div className="text-xs text-slate-500">結算日: {report.date}</div></div>
-                                                <div className="text-right"><div className="text-sm font-mono text-white">{displayMoney(report.total)}</div><div className={`text-xs ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{diff >= 0 ? '+' : ''}{displayMoney(diff)} ({diff >= 0 ? '+' : ''}{diffPercent}%)</div></div>
+                                            <div key={report.date} className="glass-panel rounded-xl overflow-hidden transition-all duration-300">
+                                                {/* Header / Toggle Button */}
+                                                <button 
+                                                    onClick={() => toggleMonth(monthStr)}
+                                                    className="w-full p-4 flex justify-between items-center text-left hover:bg-slate-800/50 transition-colors"
+                                                >
+                                                    <div>
+                                                        <div className="text-sm text-slate-300 font-bold flex items-center gap-2">
+                                                            {monthStr}
+                                                            {idx === 0 && <span className="text-[10px] bg-blue-600/30 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30">最新</span>}
+                                                        </div>
+                                                        <div className="text-xs text-slate-500 mt-1">結算日: {report.date}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        {/* Summary Badge visible when collapsed */}
+                                                        {!isExpanded && (
+                                                            <div className={`text-xs px-2 py-1 rounded-full bg-slate-900 border ${diff >= 0 ? 'text-emerald-400 border-emerald-900' : 'text-red-400 border-red-900'}`}>
+                                                                {diff >= 0 ? '+' : ''}{displayMoney(diff)}
+                                                            </div>
+                                                        )}
+                                                        <Icon 
+                                                            name="chevron-down" 
+                                                            className={`w-4 h-4 text-slate-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
+                                                        />
+                                                    </div>
+                                                </button>
+
+                                                {/* Expandable Content Area */}
+                                                <div 
+                                                    className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+                                                >
+                                                    <div className="overflow-hidden">
+                                                        <div className="p-4 pt-0 border-t border-slate-700/50 mt-2">
+                                                            <div className="flex justify-between items-end mb-3 mt-3">
+                                                                <span className="text-xs text-slate-400">當月結算總資產</span>
+                                                                <span className="text-lg font-mono text-white">{displayMoney(report.total)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg border border-slate-700/30">
+                                                                <span className="text-xs text-slate-400">較上月結算</span>
+                                                                <div className="text-right">
+                                                                    <div className={`text-sm font-bold ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                        {diff >= 0 ? '+' : ''}{displayMoney(diff)}
+                                                                    </div>
+                                                                    <div className={`text-[10px] ${diff >= 0 ? 'text-emerald-500/80' : 'text-red-500/80'}`}>
+                                                                        {diff >= 0 ? '+' : ''}{diffPercent}%
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         ); 
                                     })}
