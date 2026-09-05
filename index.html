@@ -10,8 +10,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
-    <link rel="icon" type="image/png" href="icon.png">
-    <link rel="apple-touch-icon" href="icon.png">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/10384/10384161.png">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/10384/10384161.png">
 
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -52,7 +52,11 @@
 
     <script type="text/babel">
         // --- VERSION CONTROL ---
-        const APP_VERSION = '23.3.0'; // Updated: Timeout protection, live sync status & error reporting
+        const APP_VERSION = '23.4.0'; // Updated: Cloudflare Worker Integration & Timeout fixes
+
+        // --- CLOUDFLARE WORKER URL ---
+        // 這是你剛剛建立的專屬代理伺服器，將完美解決 Yahoo 阻擋問題
+        const CF_WORKER_URL = 'https://assetpilot-proxy.tommyliu860624.workers.dev';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -591,10 +595,10 @@
             );
         };
 
-        // --- UPDATED DATA FETCHING HELPERS WITH TIMEOUT (V23.3) ---
+        // --- DATA FETCHING HELPERS WITH TIMEOUT (V23.4) ---
         const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-        // 帶有強制超時 (Timeout) 的 Fetch 封裝，防止連線無止境卡死
+        // 帶有強制超時 (Timeout) 的 Fetch 封裝
         const fetchWithTimeout = async (url, options = {}, timeoutMs = 3500) => {
             const controller = new AbortController();
             const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -611,7 +615,7 @@
             }
         };
 
-        // 免費即時匯率 API (完全原生支援 CORS，不走易被阻擋的 Proxy)
+        // 免費即時匯率 API
         const fetchExchangeRatesAPI = async (currencies) => {
             try {
                 const res = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' }, 4000);
@@ -631,54 +635,64 @@
             }
         };
 
-        // 強韌的 Yahoo 報價獲取引擎 (帶 3 秒強制中斷，自動測試備援節點)
+        // 強韌的 Yahoo 報價引擎：優先使用使用者的 Cloudflare Worker 代理
         const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
+            const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`;
             
-            // 多重端點：包含 query1 與 query2
-            const endpoints = [
-                `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`,
-                `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`
-            ];
-            
-            // 多重 Proxy 備援池（移除被 Yahoo Cloudflare 徹底封死的老舊節點，加入新版輕量 Proxy）
-            const proxies = [
+            // 嘗試使用 Cloudflare Worker 專屬節點
+            try {
+                const targetUrl = `${CF_WORKER_URL}?url=${encodeURIComponent(endpoint)}`;
+                const res = await fetchWithTimeout(targetUrl, { cache: "no-store" }, 3000);
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    if (meta && meta.regularMarketPrice) {
+                        return { 
+                            price: meta.regularMarketPrice, 
+                            name: meta.longName || meta.shortName || null 
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn(`Cloudflare proxy failed for ${ticker}, trying fallback...`, e);
+            }
+
+            // 備援方案 (如果 Cloudflare 失敗，才使用公共 Proxy)
+            const fallbackProxies = [
                 (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-                (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-                (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`
+                (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
             ];
 
-            for (const proxy of proxies) {
-                for (const endpoint of endpoints) {
-                    try {
-                        const targetUrl = proxy(endpoint);
-                        const res = await fetchWithTimeout(targetUrl, { cache: "no-store" }, 3000);
-                        if (!res.ok) continue;
-                        
-                        let data;
-                        if (targetUrl.includes('allorigins')) {
-                            const json = await res.json();
-                            if (!json.contents) continue;
-                            data = JSON.parse(json.contents);
-                        } else {
-                            data = await res.json();
-                        }
-                        
-                        const meta = data?.chart?.result?.[0]?.meta;
-                        if (meta && meta.regularMarketPrice) {
-                            return { 
-                                price: meta.regularMarketPrice, 
-                                name: meta.longName || meta.shortName || null 
-                            };
-                        }
-                    } catch (e) {
-                        // 逾時或拒絕連線，自動換下一個
+            for (const proxy of fallbackProxies) {
+                try {
+                    const targetUrl = proxy(endpoint);
+                    const res = await fetchWithTimeout(targetUrl, { cache: "no-store" }, 3000);
+                    if (!res.ok) continue;
+                    
+                    let data;
+                    if (targetUrl.includes('allorigins')) {
+                        const json = await res.json();
+                        if (!json.contents) continue;
+                        data = JSON.parse(json.contents);
+                    } else {
+                        data = await res.json();
                     }
+                    
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    if (meta && meta.regularMarketPrice) {
+                        return { 
+                            price: meta.regularMarketPrice, 
+                            name: meta.longName || meta.shortName || null 
+                        };
+                    }
+                } catch (e) {
+                    // 自動忽略並換下一個
                 }
             }
             return { price: null, name: null };
         };
-
 
         const App = () => {
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
@@ -885,7 +899,7 @@
                 }
             };
 
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.3_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v23.4_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
             const openEditItem = (itemData) => { 
@@ -1147,7 +1161,7 @@
                         </div>
                     )}
 
-                    {/* Tab 2: Wallet & Tab 3: Analysis */}
+                    {/* Tab 2: Wallet */}
                     {activeTab === 'wallet' && (
                         <div className="px-6 space-y-4 pb-20 animate-fade-in pt-4">
                             <p className="text-xs text-center text-slate-500 mb-2">點擊卡片開啟計算機 / 修正股數</p>
@@ -1222,25 +1236,13 @@
                     <Toast message={toast.message} show={toast.show} />
 
                     {/* Update Notification */}
-                    <UpdateNotification 
-                        show={!!updateAvailable} 
-                        newVersion={updateAvailable} 
-                        onUpdate={() => window.location.reload()} 
-                    />
+                    <UpdateNotification show={!!updateAvailable} newVersion={updateAvailable} onUpdate={() => window.location.reload()} />
 
                     {/* Welcome Modal */}
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
 
                     {/* Tutorial Modal */}
-                    {showTutorial && (
-                        <TutorialSpotlight 
-                            stepIndex={tutorialStep} 
-                            totalSteps={TUTORIAL_STEPS.length} 
-                            onNext={handleTutorialNext} 
-                            onPrev={handleTutorialPrev}
-                            onClose={handleTutorialClose} 
-                        />
-                    )}
+                    {showTutorial && <TutorialSpotlight stepIndex={tutorialStep} totalSteps={TUTORIAL_STEPS.length} onNext={handleTutorialNext} onPrev={handleTutorialPrev} onClose={handleTutorialClose} />}
 
                     {/* SOP Input Modal */}
                     {sopTaskInput && (
@@ -1312,48 +1314,18 @@
                                     <div className="mt-4 mb-2">
                                         <label className="block text-xs text-slate-400 mb-2">使用者名稱</label>
                                         <div className="flex gap-2">
-                                            <input 
-                                                type="text" 
-                                                value={userName} 
-                                                onChange={(e) => setUserName(e.target.value)} 
-                                                className="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full text-white focus:border-blue-500 outline-none placeholder-slate-600"
-                                                placeholder="請輸入您的暱稱"
-                                            />
-                                            <button 
-                                                onClick={() => {
-                                                    playSfx('success');
-                                                    triggerToast('使用者名稱已更新');
-                                                    setShowSettings(false);
-                                                }} 
-                                                className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-bold text-sm whitespace-nowrap transition-colors"
-                                            >
-                                                儲存
-                                            </button>
+                                            <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full text-white focus:border-blue-500 outline-none placeholder-slate-600" placeholder="請輸入您的暱稱" />
+                                            <button onClick={() => { playSfx('success'); triggerToast('使用者名稱已更新'); setShowSettings(false); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-bold text-sm whitespace-nowrap transition-colors">儲存</button>
                                         </div>
                                     </div>
                                     
                                     {/* Sound Toggle */}
                                     <div className="mt-4 mb-2">
                                         <label className="block text-xs text-slate-400 mb-2">系統設定</label>
-                                        <div 
-                                            onClick={() => { 
-                                                const newState = !soundEnabled;
-                                                setSoundEnabled(newState); 
-                                                if (newState) {
-                                                    SoundEngine.init(); 
-                                                    SoundEngine.play('switch');
-                                                }
-                                            }}
-                                            className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${soundEnabled ? 'bg-blue-500/10 border-blue-500/50' : 'bg-slate-800 border-slate-600 hover:border-slate-500'}`}
-                                        >
+                                        <div onClick={() => { const newState = !soundEnabled; setSoundEnabled(newState); if (newState) { SoundEngine.init(); SoundEngine.play('switch'); } }} className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${soundEnabled ? 'bg-blue-500/10 border-blue-500/50' : 'bg-slate-800 border-slate-600 hover:border-slate-500'}`}>
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${soundEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                                                    <Icon name={soundEnabled ? "volume-2" : "volume-x"} className="w-4 h-4" />
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className={`text-xs font-bold ${soundEnabled ? 'text-blue-100' : 'text-slate-300'}`}>音效回饋</span>
-                                                    <span className="text-[10px] text-slate-500">{soundEnabled ? '系統音效已開啟' : '靜音模式'}</span>
-                                                </div>
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${soundEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}><Icon name={soundEnabled ? "volume-2" : "volume-x"} className="w-4 h-4" /></div>
+                                                <div className="flex flex-col"><span className={`text-xs font-bold ${soundEnabled ? 'text-blue-100' : 'text-slate-300'}`}>音效回饋</span><span className="text-[10px] text-slate-500">{soundEnabled ? '系統音效已開啟' : '靜音模式'}</span></div>
                                             </div>
                                             <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${soundEnabled ? 'bg-blue-500' : 'bg-slate-600'}`}>
                                                 <div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-300 ${soundEnabled ? 'translate-x-6' : 'translate-x-1'}`}></div>
@@ -1373,23 +1345,15 @@
                                         </div>
                                     </div>
 
-                                    {/* Reset System Button */}
+                                    {/* Reset System */}
                                     <div className="pt-2 border-t border-slate-700 mt-2">
                                         <label className="block text-xs text-red-400 mb-2">危險區域</label>
-                                        <button 
-                                            onClick={() => {
-                                                if (confirm('警告：此操作將清除所有資料並重置系統！此動作無法復原。確定要繼續嗎？')) {
-                                                    localStorage.clear();
-                                                    window.location.reload();
-                                                }
-                                            }} 
-                                            className="w-full py-3 rounded bg-red-500/10 text-red-500 text-xs border border-red-500/50 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"
-                                        >
+                                        <button onClick={() => { if (confirm('警告：此操作將清除所有資料並重置系統！此動作無法復原。確定要繼續嗎？')) { localStorage.clear(); window.location.reload(); } }} className="w-full py-3 rounded bg-red-500/10 text-red-500 text-xs border border-red-500/50 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2">
                                             <Icon name="alert-triangle" className="w-3 h-3" /> 重置系統資料
                                         </button>
                                     </div>
 
-                                    {/* Replay Tutorial Button */}
+                                    {/* Replay Tutorial */}
                                     <div className="pt-2 border-t border-slate-700">
                                         <button onClick={replayTutorial} className="w-full py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors flex items-center justify-center gap-2">
                                             <Icon name="help-circle" className="w-3 h-3" /> 重播新手教學導覽
@@ -1422,12 +1386,7 @@
                         {addItemType.includes('stock') && (<div><label className="text-xs text-slate-400 mb-1 block">股票名稱 (選填)</label><input value={addForm.sub} onChange={e => handleAddFormChange('sub', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>)}
                         <div>
                             <label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '初始金額 (計算機)' : '持有股數 (計算機)'}</label>
-                            <Calculator 
-                                initialValue={0} 
-                                onValueChange={(val) => handleAddFormChange('val', val)} 
-                                showConfirmBtn={false} 
-                                playSfx={playSfx}
-                            />
+                            <Calculator initialValue={0} onValueChange={(val) => handleAddFormChange('val', val)} showConfirmBtn={false} playSfx={playSfx} />
                         </div>
                         <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input value={addForm.note} onChange={e => handleAddFormChange('note', e.target.value)} type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
                     </div>
