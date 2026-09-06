@@ -942,24 +942,47 @@
             // --- Smart Autocomplete Logic ---
             const handleAddFormChange = (field, value) => { 
                 setAddForm(prev => ({ ...prev, [field]: value })); 
-                if(field === 'main' && addItemType.includes('stock')) {
+                if(field === 'main' && addItemType && addItemType.includes('stock')) {
                      if(searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-                     if(value.length > 1) {
+                     const query = value.trim();
+                     if(query.length > 0) {
                          setIsSearching(true);
                          searchTimeoutRef.current = setTimeout(async () => {
                              try {
-                                 const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${value}&quotesCount=6`)}`);
-                                 const data = await res.json();
-                                 if(data.contents) {
-                                     const parsed = JSON.parse(data.contents);
-                                     setSearchResults(parsed.quotes || []);
+                                 const encodedQuery = encodeURIComponent(query);
+                                 let results = [];
+                                 
+                                 // 第一重保險：優先嘗試 Cloudflare 專屬代理
+                                 try {
+                                     const url1 = `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v1/finance/search?q=${encodedQuery}&quotesCount=6`)}`;
+                                     const res1 = await fetch(url1);
+                                     if (res1.ok) {
+                                         const data1 = await res1.json();
+                                         results = data1.quotes || [];
+                                     }
+                                 } catch(e) {}
+
+                                 // 第二重保險：如果代理不支援搜尋路徑或失敗，瞬間啟動開源備用通道
+                                 if (results.length === 0) {
+                                     const url2 = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodedQuery}&quotesCount=6`)}`;
+                                     const res2 = await fetch(url2);
+                                     if (res2.ok) {
+                                         const json = await res2.json();
+                                         if (json.contents) {
+                                             const data2 = JSON.parse(json.contents);
+                                             results = data2.quotes || [];
+                                         }
+                                     }
                                  }
+                                 
+                                 setSearchResults(results);
                              } catch (e) {
+                                 console.error("Search API error:", e);
                                  setSearchResults([]);
                              } finally {
                                  setIsSearching(false);
                              }
-                         }, 500);
+                         }, 600); // 延長防抖時間，避免輸入過快造成 Yahoo 封鎖
                      } else {
                          setSearchResults([]);
                          setIsSearching(false);
