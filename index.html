@@ -6,7 +6,9 @@
     <title>AssetPilot V24.5</title>
     
     <!-- PWA Settings -->
-    <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
+    <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png"}]}' />
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
@@ -1403,7 +1405,7 @@
                             </label>
                             <div className="relative">
                                 <input value={addForm.main} onChange={e => handleSearchTextChange(e.target.value)} type="text" placeholder={addItemType.includes('stock') ? "例如: 台積電 或 AAPL" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" />
-                                {isSearching && <div className="absolute right-3 top-1/2 transform -translate-y-1/2 search-spinner"></div>}
+                                {isSearching && <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-400"><Icon name="loader" className="w-4 h-4 animate-spin" /></div>}
                             </div>
                             
                             {/* Autocomplete Dropdown */}
