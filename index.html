@@ -20,7 +20,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- 引入截圖套件 html2canvas 用於戰報分享 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
@@ -356,6 +355,7 @@
                 if (timeRange === 'CUSTOM' && customDates.start && customDates.end) {
                      const s = parseDate(customDates.start); const e = parseDate(customDates.end);
                      rangeData = chartHistory.filter(h => { const d = parseDate(h.date); return d >= s && d <= e; });
+                } else if (timeRange === '日') { rangeData = chartHistory;
                 } else { rangeData = chartHistory; }
                 if (timeRange === '日' || timeRange === 'CUSTOM') return rangeData;
                 const groups = {};
@@ -492,6 +492,7 @@
             );
         };
 
+        // --- STREAMING_CHUNK:V24.0 Share Modal Component... ---
         const ShareModal = ({ onClose, userName, totalNetWorth, ytdStats, cash, tw, us, isPrivacyMode, playSfx, goals, history, rates, cashList, foreignCashList }) => {
             const reportRef = useRef(null);
             const [isGenerating, setIsGenerating] = useState(false);
@@ -513,23 +514,31 @@
                 }
                 setIsGenerating(true);
                 try {
-                    await new Promise(r => setTimeout(r, 100));
+                    // 確保渲染完畢
+                    await new Promise(r => setTimeout(r, 300));
+                    
                     const canvas = await window.html2canvas(reportRef.current, {
-                        scale: 3,
-                        backgroundColor: '#0f172a',
+                        scale: 3, // 高畫質
+                        backgroundColor: '#0f172a', // 強制深色背景避免透明破圖
                         useCORS: true,
                         logging: false
                     });
                     
                     canvas.toBlob(async (blob) => {
-                        const file = new File([blob], `AssetPilot_戰報_${getLocalDateString()}.png`, { type: 'image/png' });
-                        const shareData = { files: [file], title: 'AssetPilot 戰報', text: '這是我使用 AssetPilot 產生的資產戰報！' };
+                        const file = new File([blob], `AssetPilot_Report_${getLocalDateString()}.png`, { type: 'image/png' });
+                        const shareData = { 
+                            files: [file], 
+                            title: 'AssetPilot 財務戰報', 
+                            text: '與您分享我的最新 AssetPilot 財務戰報！' 
+                        };
                         
+                        // 優先使用 Web Share API (原生分享，支援存圖/IG/Line)
                         if (navigator.canShare && navigator.canShare(shareData)) {
                             try {
                                 await navigator.share(shareData);
                                 playSfx('success');
                             } catch (e) {
+                                // 使用者取消分享不當作錯誤
                                 if (e.name !== 'AbortError') fallbackDownload(canvas.toDataURL("image/png"));
                             }
                         } else {
@@ -546,13 +555,14 @@
             const fallbackDownload = (dataUrl) => {
                 const a = document.createElement("a");
                 a.href = dataUrl;
-                a.download = `AssetPilot_戰報_${getLocalDateString()}.png`;
+                a.download = `AssetPilot_Report_${getLocalDateString()}.png`;
                 a.click();
                 playSfx('success');
             };
 
             const netWorthStr = displayMoney(totalNetWorth);
-            const nwFontSize = netWorthStr.length > 11 ? 'text-3xl' : 'text-4xl';
+            // 動態字體大小防爆框
+            const nwFontSize = netWorthStr.length > 13 ? 'text-2xl' : (netWorthStr.length > 10 ? 'text-3xl' : 'text-4xl');
 
             const renderTrendLine = () => {
                 if (!history || history.length < 2) return <div className="text-slate-500 text-xs text-center mt-8">資料不足以繪製趨勢</div>;
@@ -560,15 +570,29 @@
                 const max = Math.max(...recent.map(h => h.total));
                 const min = Math.min(...recent.map(h => h.total));
                 const range = max - min === 0 ? 1 : max - min;
-                const points = recent.map((h, i) => `${(i / (recent.length - 1)) * 100},${100 - (((h.total - min) / range) * 80 + 10)}`).join(' ');
+                
+                // 固定視窗大小避免 SVG preserveAspectRatio 變形
+                const w = 300;
+                const h = 150;
+                
+                // 計算絕對座標，保留上下 20px padding
+                const points = recent.map((item, i) => {
+                    const x = (i / (recent.length - 1)) * w;
+                    const y = h - 20 - (((item.total - min) / range) * (h - 40));
+                    return `${x},${y}`;
+                }).join(' ');
                 
                 return (
-                    <div className="w-full h-32 mt-4 relative">
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-                            <polyline points={points} fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                            {recent.map((h, i) => {
+                    <div className="w-full mt-6 relative flex justify-center px-4">
+                        <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto overflow-visible drop-shadow-lg">
+                            <polyline points={points} fill="none" stroke="#60a5fa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                            {recent.map((item, i) => {
                                 if (i === recent.length - 1) {
-                                    return <circle key={i} cx="100" cy={100 - (((h.total - min) / range) * 80 + 10)} r="4" fill="#60a5fa" stroke="#0f172a" strokeWidth="2" />;
+                                    const x = w;
+                                    const y = h - 20 - (((item.total - min) / range) * (h - 40));
+                                    return (
+                                        <circle key={i} cx={x} cy={y} r="6" fill="#bfdbfe" stroke="#0f172a" strokeWidth="3" />
+                                    );
                                 }
                                 return null;
                             })}
@@ -578,144 +602,176 @@
             };
 
             return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-[600] p-6 animate-fade-in" onClick={onClose}>
-                    <div className="flex bg-slate-800 p-1 rounded-xl mb-4 shadow-lg border border-slate-700" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-[600] p-6 animate-fade-in overflow-y-auto" onClick={onClose}>
+                    
+                    {/* 頂部控制列 */}
+                    <div className="flex bg-slate-800 p-1 rounded-xl mb-6 shadow-lg border border-slate-700 w-full max-w-[300px]" onClick={e => e.stopPropagation()}>
                         {[{id:'overview', icon:'layout', label:'綜合'}, {id:'investment', icon:'trending-up', label:'投資'}, {id:'goals', icon:'target', label:'目標'}, {id:'trend', icon:'activity', label:'趨勢'}].map(t => (
-                            <button key={t.id} onClick={() => { playSfx('tap'); setCardType(t.id); }} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold transition-colors ${cardType === t.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
-                                <Icon name={t.icon} className="w-3 h-3 mr-1" /> {t.label}
+                            <button key={t.id} onClick={() => { playSfx('tap'); setCardType(t.id); }} className={`flex-1 flex flex-col items-center justify-center py-2 rounded-lg text-[10px] font-bold transition-all ${cardType === t.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>
+                                <Icon name={t.icon} className="w-4 h-4 mb-1" /> {t.label}
                             </button>
                         ))}
                     </div>
 
-                    <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                        <div className="w-full flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold text-white flex items-center"><Icon name="camera" className="w-5 h-5 mr-2 text-blue-400" /> 匯出專屬戰報</h3>
-                            <button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-5 h-5" /></button>
-                        </div>
-                        
-                        <div ref={reportRef} className="w-full bg-gradient-to-b from-slate-800 to-slate-900 rounded-2xl p-6 shadow-2xl border border-white/10 relative overflow-hidden" style={{ minHeight: '380px' }}>
-                            <div className={`absolute top-0 right-0 w-40 h-40 rounded-full blur-[40px] -translate-y-1/2 translate-x-1/2 ${cardType==='investment'?'bg-emerald-500/20':cardType==='goals'?'bg-yellow-500/20':cardType==='trend'?'bg-pink-500/20':'bg-blue-500/20'}`}></div>
-                            <div className={`absolute bottom-0 left-0 w-40 h-40 rounded-full blur-[40px] translate-y-1/2 -translate-x-1/2 ${cardType==='investment'?'bg-sky-500/20':cardType==='goals'?'bg-orange-500/20':cardType==='trend'?'bg-purple-500/20':'bg-purple-500/20'}`}></div>
+                    {/* 畫布區域：強制 9:16 (w-300px h-533px) */}
+                    <div className="relative shadow-2xl flex-shrink-0" onClick={e => e.stopPropagation()}>
+                        <div ref={reportRef} className="w-[300px] h-[533px] bg-slate-900 rounded-[2rem] p-6 flex flex-col relative overflow-hidden border border-white/10" style={{ backgroundColor: '#0f172a' }}>
+                            
+                            {/* 光暈特效 */}
+                            <div className={`absolute top-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full blur-[60px] ${cardType==='investment'?'bg-emerald-500/20':cardType==='goals'?'bg-yellow-500/20':cardType==='trend'?'bg-blue-500/20':'bg-purple-500/20'}`}></div>
+                            <div className={`absolute bottom-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full blur-[60px] ${cardType==='investment'?'bg-sky-500/20':cardType==='goals'?'bg-orange-500/20':cardType==='trend'?'bg-pink-500/20':'bg-blue-500/20'}`}></div>
 
-                            <div className="relative z-10 h-full flex flex-col justify-between min-h-[290px]">
-                                <div className="flex justify-between items-start mb-6">
+                            {/* 內容區塊 */}
+                            <div className="relative z-10 h-full flex flex-col justify-between">
+                                
+                                {/* Header */}
+                                <div className="flex justify-between items-start mb-4">
                                     <div>
-                                        <div className="text-white font-bold text-lg flex items-center tracking-wide"><Icon name="shield-check" className="w-5 h-5 mr-1.5 text-emerald-400" />AssetPilot</div>
+                                        <div className="text-white font-bold text-lg flex items-center tracking-wide">
+                                            <Icon name="shield-check" className="w-5 h-5 mr-1.5 text-blue-400" />AssetPilot
+                                        </div>
                                         <div className="text-[10px] text-slate-400 mt-1 font-mono">{getLocalDateString()}</div>
                                     </div>
-                                    <div className="bg-slate-800 border border-slate-600 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-sm flex items-center">
+                                    <div className="bg-slate-800/80 border border-slate-600 px-3 py-1.5 rounded-full text-[10px] font-bold text-white shadow-sm flex items-center backdrop-blur-md">
                                         <Icon name="user" className="w-3 h-3 mr-1.5 text-blue-400" /> {userName}
                                     </div>
                                 </div>
 
-                                <div className="flex-1 flex flex-col justify-center">
+                                {/* Body */}
+                                <div className="flex-1 flex flex-col justify-center items-center w-full">
                                     {cardType === 'overview' && (
-                                        <>
-                                            <div className="mb-6 text-center py-2">
-                                                <div className="text-xs text-slate-400 mb-2 tracking-widest uppercase">目前總資產</div>
-                                                <div className={`${nwFontSize} font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400 pb-1 break-words leading-tight`}>
+                                        <div className="w-full flex flex-col items-center">
+                                            <div className="mb-8 text-center w-full">
+                                                <div className="text-[11px] text-slate-400 mb-3 tracking-widest uppercase font-bold">目前總資產</div>
+                                                {/* 避免 html2canvas 渲染漸層文字失敗，改用純色 */}
+                                                <div className={`${nwFontSize} font-mono font-bold text-blue-300 break-words leading-tight px-2`}>
                                                     {netWorthStr}
                                                 </div>
                                             </div>
-                                            <div className="space-y-4">
-                                                <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex justify-between items-center">
-                                                    <span className="text-xs text-slate-300">本年度 (YTD) 成長</span>
+                                            
+                                            <div className="w-full space-y-5 px-2">
+                                                <div className="bg-slate-800/80 border border-white/10 rounded-2xl p-4 flex justify-between items-center backdrop-blur-md">
+                                                    <span className="text-xs text-slate-300 font-bold">本年度 (YTD) 成長</span>
                                                     <div className="text-right">
                                                         <div className="text-sm font-bold text-white">{isPrivacyMode ? '****' : `${ytdStats.diff > 0 ? '+' : ''}${formatMoney(ytdStats.diff)}`}</div>
-                                                        <div className={`text-[10px] ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{displayPercent(ytdStats.percent)}</div>
+                                                        <div className={`text-[10px] font-bold ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{displayPercent(ytdStats.percent)}</div>
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <div className="h-2 w-full flex rounded-full overflow-hidden bg-slate-800">
+                                                
+                                                <div className="w-full">
+                                                    <div className="text-[10px] text-slate-400 mb-2 flex justify-between">
+                                                        <span>資產配置</span>
+                                                    </div>
+                                                    <div className="h-3 w-full flex rounded-full overflow-hidden bg-slate-800">
                                                         {pCash > 0 && <div style={{ flexGrow: pCash }} className="bg-emerald-500"></div>}
                                                         {pTw > 0 && <div style={{ flexGrow: pTw }} className="bg-sky-500"></div>}
                                                         {pUs > 0 && <div style={{ flexGrow: pUs }} className="bg-purple-500"></div>}
                                                     </div>
+                                                    <div className="flex justify-between mt-2 text-[9px] text-slate-400">
+                                                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>現金 {pCash.toFixed(0)}%</div>
+                                                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-sky-500 mr-1"></div>台股 {pTw.toFixed(0)}%</div>
+                                                        <div className="flex items-center"><div className="w-2 h-2 rounded-full bg-purple-500 mr-1"></div>外資 {pUs.toFixed(0)}%</div>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </>
+                                        </div>
                                     )}
 
                                     {cardType === 'investment' && (
-                                        <>
-                                            <div className="mb-6 text-center py-2">
-                                                <div className="text-xs text-slate-400 mb-2 tracking-widest uppercase">股市曝險總額</div>
-                                                <div className={`${displayMoney(tw + us).length > 11 ? 'text-3xl' : 'text-4xl'} font-mono font-bold text-emerald-400 pb-1 break-words leading-tight`}>
+                                        <div className="w-full flex flex-col items-center">
+                                            <div className="mb-8 text-center w-full">
+                                                <div className="text-[11px] text-slate-400 mb-3 tracking-widest uppercase font-bold">股市曝險總額</div>
+                                                <div className={`${displayMoney(tw + us).length > 11 ? 'text-3xl' : 'text-4xl'} font-mono font-bold text-emerald-400 break-words leading-tight px-2`}>
                                                     {displayMoney(tw + us)}
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-3 mt-2">
-                                                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                                                    <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 mx-auto flex items-center justify-center mb-2"><Icon name="trending-up" className="w-3 h-3" /></div>
-                                                    <div className="text-[10px] text-slate-400 mb-1">台股現貨</div>
-                                                    <div className="text-sm font-bold text-white">{displayMoney(tw)}</div>
+                                            <div className="w-full grid grid-cols-1 gap-3 px-2">
+                                                <div className="bg-slate-800/80 border border-white/10 rounded-2xl p-4 flex justify-between items-center backdrop-blur-md">
+                                                    <div className="flex items-center">
+                                                        <div className="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center mr-3"><Icon name="trending-up" className="w-4 h-4" /></div>
+                                                        <div className="text-xs text-slate-300 font-bold">台股現貨</div>
+                                                    </div>
+                                                    <div className="text-base font-bold text-white font-mono">{displayMoney(tw)}</div>
                                                 </div>
-                                                <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                                                    <div className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 mx-auto flex items-center justify-center mb-2"><Icon name="globe" className="w-3 h-3" /></div>
-                                                    <div className="text-[10px] text-slate-400 mb-1">海外投資</div>
-                                                    <div className="text-sm font-bold text-white">{displayMoney(us)}</div>
+                                                <div className="bg-slate-800/80 border border-white/10 rounded-2xl p-4 flex justify-between items-center backdrop-blur-md">
+                                                    <div className="flex items-center">
+                                                        <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center mr-3"><Icon name="globe" className="w-4 h-4" /></div>
+                                                        <div className="text-xs text-slate-300 font-bold">海外投資</div>
+                                                    </div>
+                                                    <div className="text-base font-bold text-white font-mono">{displayMoney(us)}</div>
                                                 </div>
                                             </div>
-                                        </>
+                                        </div>
                                     )}
 
                                     {cardType === 'goals' && (
-                                        <>
+                                        <div className="w-full flex flex-col items-center">
                                             {goals && goals.length > 0 ? (() => {
                                                 const g = goals[0];
                                                 const pct = g.target > 0 ? (totalNetWorth / g.target) * 100 : 0;
+                                                const visualPct = Math.min(100, Math.max(0, pct));
                                                 return (
-                                                    <div className="text-center flex flex-col items-center">
-                                                        <div className="text-xs text-yellow-400/80 mb-2 font-bold tracking-widest uppercase bg-yellow-500/10 px-3 py-1 rounded-full">頭號目標進度</div>
-                                                        <div className="text-xl font-bold text-white mb-6 mt-2">{g.title}</div>
-                                                        <div className="relative w-32 h-32 flex items-center justify-center mb-4">
-                                                            <svg height="128" width="128" className="rotate-[-90deg]">
-                                                                <circle stroke="#1e293b" strokeWidth="8" r="56" cx="64" cy="64" fill="transparent" />
-                                                                <circle stroke={pct >= 100 ? '#eab308' : '#3b82f6'} strokeWidth="8" strokeDasharray={`${2*Math.PI*56} ${2*Math.PI*56}`} style={{ strokeDashoffset: `${2*Math.PI*56 - (Math.min(100, pct)/100)*2*Math.PI*56}` }} strokeLinecap="round" r="56" cx="64" cy="64" fill="transparent" />
+                                                    <div className="text-center flex flex-col items-center w-full">
+                                                        <div className="text-[10px] text-yellow-400/90 mb-4 font-bold tracking-widest uppercase bg-yellow-500/10 px-4 py-1.5 rounded-full border border-yellow-500/20">頭號目標追蹤</div>
+                                                        <div className="text-xl font-bold text-white mb-8 px-4">{g.title}</div>
+                                                        
+                                                        <div className="relative w-40 h-40 flex items-center justify-center mb-6">
+                                                            <svg height="160" width="160" className="rotate-[-90deg]">
+                                                                <circle stroke="#1e293b" strokeWidth="12" r="70" cx="80" cy="80" fill="transparent" />
+                                                                <circle stroke={pct >= 100 ? '#eab308' : '#3b82f6'} strokeWidth="12" strokeDasharray={`${2*Math.PI*70} ${2*Math.PI*70}`} style={{ strokeDashoffset: `${2*Math.PI*70 - (visualPct/100)*2*Math.PI*70}` }} strokeLinecap="round" r="70" cx="80" cy="80" fill="transparent" />
                                                             </svg>
                                                             <div className="absolute flex flex-col items-center">
-                                                                <span className={`text-2xl font-bold ${pct >= 100 ? 'text-yellow-400' : 'text-white'}`}>{isPrivacyMode ? '**' : pct.toFixed(0)}%</span>
+                                                                <span className={`text-3xl font-bold font-mono ${pct >= 100 ? 'text-yellow-400' : 'text-white'}`}>{isPrivacyMode ? '**' : pct.toFixed(0)}%</span>
                                                             </div>
                                                         </div>
-                                                        <div className="text-xs text-slate-400 font-mono mt-2">目標: {displayMoney(g.target)}</div>
+                                                        
+                                                        <div className="bg-slate-800/80 border border-slate-700 px-6 py-3 rounded-2xl backdrop-blur-md">
+                                                            <div className="text-[10px] text-slate-400 mb-1">目標金額</div>
+                                                            <div className="text-sm font-bold text-white font-mono">{displayMoney(g.target)}</div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })() : (
                                                 <div className="text-center py-10 text-slate-500">
-                                                    <Icon name="target" className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                                    <Icon name="target" className="w-16 h-16 mx-auto mb-4 opacity-20" />
                                                     <p className="text-sm">尚未設定任何財務目標</p>
                                                 </div>
                                             )}
-                                        </>
+                                        </div>
                                     )}
 
                                     {cardType === 'trend' && (
-                                        <>
-                                            <div className="mb-2 text-center py-2">
-                                                <div className="text-xs text-slate-400 mb-2 tracking-widest uppercase">近期資產走勢</div>
-                                                <div className={`${nwFontSize} font-mono font-bold text-blue-400 pb-1 break-words leading-tight`}>
+                                        <div className="w-full flex flex-col items-center">
+                                            <div className="mb-4 text-center w-full">
+                                                <div className="text-[11px] text-slate-400 mb-3 tracking-widest uppercase font-bold">近期資產走勢</div>
+                                                <div className={`${nwFontSize} font-mono font-bold text-blue-300 break-words leading-tight px-2`}>
                                                     {netWorthStr}
                                                 </div>
                                             </div>
                                             {renderTrendLine()}
-                                        </>
+                                        </div>
                                     )}
                                 </div>
                                 
-                                <div className="mt-8 text-center border-t border-white/10 pt-4">
-                                    <span className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">Wealth Management Engine</span>
+                                {/* Footer */}
+                                <div className="mt-6 text-center border-t border-white/10 pt-4">
+                                    <span className="text-[9px] text-slate-500 font-mono tracking-widest uppercase font-bold">Generated by AssetPilot</span>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
+                    <div className="w-full max-w-[300px] mt-6 flex flex-col gap-3">
                         <button 
                             onClick={handleShare} 
                             disabled={isGenerating}
-                            className={`w-full mt-6 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-sm flex justify-center items-center shadow-lg shadow-blue-900/20 transition-all ${isGenerating ? 'opacity-50' : 'active:scale-95'}`}
+                            className={`w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-sm flex justify-center items-center shadow-lg shadow-blue-900/20 transition-all ${isGenerating ? 'opacity-50' : 'active:scale-95'}`}
                         >
-                            {isGenerating ? <><Icon name="loader" className="w-4 h-4 mr-2 animate-spin" /> 處理中...</> : <><Icon name="share" className="w-4 h-4 mr-2" /> 分享或儲存圖卡</>}
+                            {isGenerating ? <><Icon name="loader" className="w-5 h-5 mr-2 animate-spin" /> 產生中...</> : <><Icon name="share" className="w-5 h-5 mr-2" /> 分享與儲存圖卡</>}
                         </button>
-                        <p className="text-[10px] text-slate-500 mt-4 text-center">💡 支援原生分享，可直達 IG / Line！</p>
+                        <button onClick={onClose} className="w-full py-3 rounded-xl bg-slate-800 text-slate-400 hover:text-white font-bold text-sm transition-colors">
+                            關閉
+                        </button>
                     </div>
                 </div>
             );
@@ -863,44 +919,38 @@
             }
         };
 
+        // --- STREAMING_CHUNK:Main Data Fetching... ---
         const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
-            const endpoints = [
-                `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`,
-                `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`
-            ];
             
-            const proxies = [
-                (url) => `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(url)}`,
-                (url) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-                (url) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
+            // 替換為你的專屬 Cloudflare Worker Proxy
+            const endpoints = [
+                `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`)}`,
+                `https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`)}`
             ];
 
-            for (const proxy of proxies) {
-                for (const endpoint of endpoints) {
-                    try {
-                        const targetUrl = proxy(endpoint);
-                        const res = await fetchWithTimeout(targetUrl, { cache: "no-store" }, 3000);
-                        if (!res.ok) continue;
-                        
-                        let data;
-                        if (targetUrl.includes('allorigins')) {
-                            const json = await res.json();
-                            if (!json.contents) continue;
-                            data = JSON.parse(json.contents);
-                        } else {
-                            data = await res.json();
-                        }
-                        
-                        const meta = data?.chart?.result?.[0]?.meta;
-                        if (meta && meta.regularMarketPrice) {
-                            return { 
-                                price: meta.regularMarketPrice, 
-                                name: meta.longName || meta.shortName || null 
-                            };
-                        }
-                    } catch (e) {}
-                }
+            for (const endpoint of endpoints) {
+                try {
+                    const res = await fetchWithTimeout(endpoint, { cache: "no-store" }, 3000);
+                    if (!res.ok) continue;
+                    
+                    let data;
+                    if (endpoint.includes('allorigins')) {
+                        const json = await res.json();
+                        if (!json.contents) continue;
+                        data = JSON.parse(json.contents);
+                    } else {
+                        data = await res.json();
+                    }
+                    
+                    const meta = data?.chart?.result?.[0]?.meta;
+                    if (meta && meta.regularMarketPrice) {
+                        return { 
+                            price: meta.regularMarketPrice, 
+                            name: meta.longName || meta.shortName || null 
+                        };
+                    }
+                } catch (e) {}
             }
             return { price: null, name: null };
         };
@@ -918,12 +968,14 @@
             const [walletOrder, setWalletOrder] = useState(() => { const saved = localStorage.getItem('ap_wallet_order'); return saved ? JSON.parse(saved) : ['cashTW', 'cashForeign', 'stockForeign', 'stockTW']; });
             const [userName, setUserName] = useState(() => localStorage.getItem('ap_user_name') || 'User');
             const [soundEnabled, setSoundEnabled] = useState(() => { const saved = localStorage.getItem('ap_sound_enabled'); return saved !== null ? JSON.parse(saved) : true; });
+            
             const [showWelcome, setShowWelcome] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '' });
             const [showTutorial, setShowTutorial] = useState(false);
             const [tutorialStep, setTutorialStep] = useState(0);
             const [isPrivacyMode, setIsPrivacyMode] = useState(false); 
             const [activeTab, setActiveTab] = useState('dashboard');
+            
             const [trendMode, setTrendMode] = useState('total'); 
             const [timeRange, setTimeRange] = useState('日'); 
             const [customDates, setCustomDates] = useState({ start: '', end: '' }); 
@@ -931,18 +983,23 @@
             const [deleteConfirm, setDeleteConfirm] = useState(false);
             const [addItemType, setAddItemType] = useState(null);
             const [editGoal, setEditGoal] = useState(null);
+            
             const [sopEditMode, setSopEditMode] = useState(false);
             const [showSopModal, setShowSopModal] = useState(false);
             const [showSettings, setShowSettings] = useState(false); 
             const [showDateModal, setShowDateModal] = useState(false);
+            const [showShareModal, setShowShareModal] = useState(false);
+            
             const [isUpdating, setIsUpdating] = useState(false);
             const [updateProgressText, setUpdateProgressText] = useState('');
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
+            
             const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
             const [updateAvailable, setUpdateAvailable] = useState(null); 
-            const [showShareModal, setShowShareModal] = useState(false);
+            
+            // --- 折疊戰報狀態 ---
             const [expandedYears, setExpandedYears] = useState({ [new Date().getFullYear()]: true });
             const [expandedMonths, setExpandedMonths] = useState({});
             
@@ -1005,7 +1062,15 @@
                 const today = getLocalDateString();
                 const lastRecord = history[history.length - 1];
                 const newRecord = { date: today, cashTW: Math.round(totalCashTWD), stockTW: Math.round(totalTwStocksTWD), cashForeign: Math.round(totalForeignCashTWD), stockForeign: Math.round(totalForeignStocksTWD), total: Math.round(totalNetWorth) };
-                if (history.length === 0) { setHistory([newRecord]); } else if (lastRecord.date !== today) { setHistory(prev => [...prev, newRecord]); } else if (Math.abs(lastRecord.total - totalNetWorth) > 100) { setHistory(prev => [...prev.slice(0, -1), newRecord]); }
+                
+                if (history.length === 0) { 
+                    setHistory([newRecord]); 
+                } else if (lastRecord.date !== today) { 
+                    setHistory(prev => [...prev, newRecord]); 
+                } else {
+                    // 同一天的紀錄，覆蓋最後一筆
+                    setHistory(prev => [...prev.slice(0, -1), newRecord]); 
+                }
             }, [totalNetWorth]);
 
             const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
@@ -1034,7 +1099,8 @@
                 });
                 return groups;
             }, [monthlyReportData]);
-            
+
+            // --- STREAMING_CHUNK:Updating the Live Data... ---
             const fetchLiveData = async () => {
                 setIsUpdating(true);
                 playSfx('tap');
@@ -1070,13 +1136,18 @@
                         const { price, name } = await fetchYahooData(s.ticker);
                         let updatedS = { ...s };
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
+                        
                         if (price !== null && price !== undefined) {
                             const diff = price - s.price;
-                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: diff });
+                            reportLogs.push({ 
+                                label: updatedS.name, 
+                                value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, 
+                                diff: diff 
+                            });
                             updatedS.price = price;
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true });
+                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留原價 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
                         }
                         newForeignStocks.push(updatedS);
                         await delay(200);
@@ -1090,13 +1161,18 @@
                         const { price, name } = await fetchYahooData(s.ticker);
                         let updatedS = { ...s };
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
+                        
                         if (price !== null && price !== undefined) {
                             const diff = price - s.price;
-                            reportLogs.push({ label: updatedS.name, value: `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: diff });
+                            reportLogs.push({ 
+                                label: updatedS.name, 
+                                value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, 
+                                diff: diff 
+                            });
                             updatedS.price = price;
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: '伺服器未回應 (保持原價)', isError: true });
+                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留原價 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
                         }
                         newTwStocks.push(updatedS);
                         await delay(200);
@@ -1110,13 +1186,15 @@
                     
                     if (!isNaN(newTotalNetWorth) && Math.abs(newTotalNetWorth - oldNetWorth) > 1) {
                         reportLogs.unshift({ label: '總資產變動', value: `${formatMoney(oldNetWorth)} -> ${formatMoney(newTotalNetWorth)}`, diff: newTotalNetWorth - oldNetWorth });
+                    } else {
+                        reportLogs.unshift({ label: '總資產變動', value: `無變動 (${formatMoney(newTotalNetWorth)})`, diff: 0 });
                     }
                     
                     setLastUpdate(new Date().toLocaleTimeString());
                     setUpdateResults(reportLogs);
                     
                     if (failedCount > 0) {
-                        triggerToast(`同步完成（${failedCount} 檔未獲取到最新報價）`);
+                        triggerToast(`同步完成（${failedCount} 檔未獲取到報價）`);
                     } else {
                         triggerToast('即時報價更新完成');
                         playSfx('success');
@@ -1248,7 +1326,7 @@
                     return (
                         <div key="cashForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('cashForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button></div></div>
-                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="flex items-center gap-2"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30">{item.currency}</div><div><div className="text-sm text-slate-200">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div></div><div className="text-right"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500">{formatForeign(item.balance, item.currency)}</div></div></div>))}
+                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div className="flex items-center gap-2"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30">{item.currency}</div><div><div className="text-sm text-slate-200">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500">{item.note}</div>}</div></div><div className="text-right"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500">{displayForeign(item.balance, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1256,7 +1334,7 @@
                     return (
                         <div key="stockForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button></div></div>
-                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono">{formatForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono">@ {formatForeign(item.price, item.currency)}</div></div></div>))}
+                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer"><div><div className="flex items-center gap-2 mb-0.5"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10">{item.note}</div>}</div><div className="text-right"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono">{displayForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono">@ {displayForeign(item.price, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1353,6 +1431,7 @@
                         </div>
                     )}
 
+                    {/* --- STREAMING_CHUNK:Analysis Tab with Collapsible Reports... --- */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1376,7 +1455,6 @@
                                     <div className="text-xs text-slate-500">累積盈虧 (YTD)</div>
                                 </div>
 
-                                {/* 雙層折疊戰報 (年度 -> 月度 -> 細項) */}
                                 <div className="space-y-3">
                                     {Object.keys(groupedByYear).sort((a,b) => b.localeCompare(a)).map(year => {
                                         const yData = groupedByYear[year];
@@ -1414,12 +1492,11 @@
                                                                         <div className="text-right">
                                                                             <div className="text-xs font-mono text-white">{displayMoney(report.total)}</div>
                                                                             <div className={`text-[10px] ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                                                {isPrivacyMode ? '****' : `${diff >= 0 ? '+' : ''}${formatMoney(diff)} (${diff >= 0 ? '+' : ''}${diffPercent.toFixed(1)}%)`}
+                                                                                {isPrivacyMode ? '****' : `${diff >= 0 ? '+' : ''}${formatMoney(diff)} (${isPrivacyMode ? '**.*%' : (diff >= 0 ? '+' : '') + diffPercent.toFixed(1) + '%'})`}
                                                                             </div>
                                                                         </div>
                                                                     </div>
 
-                                                                    {/* 展開月份細項 (四大項目變動) */}
                                                                     {isMonthOpen && (
                                                                         <div className="px-3 pb-3 pt-1 border-t border-slate-800/60 bg-slate-950/40 grid grid-cols-2 gap-2 text-[11px]">
                                                                             <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
@@ -1464,6 +1541,7 @@
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
                     {showTutorial && <TutorialSpotlight stepIndex={tutorialStep} totalSteps={TUTORIAL_STEPS.length} onNext={handleTutorialNext} onPrev={handleTutorialPrev} onClose={handleTutorialClose} />}
                     
+                    {/* Render Share Modal */}
                     {showShareModal && (
                         <ShareModal 
                             onClose={() => { playSfx('pop'); setShowShareModal(false); }} 
