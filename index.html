@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot V24.3</title>
+    <title>AssetPilot V24.5</title>
     
     <!-- PWA Settings -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/10384/10384161.png","sizes":"512x512","type":"image/png"}]}' />
@@ -20,7 +20,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -51,7 +50,7 @@
 
     <script type="text/babel">
         // --- STREAMING_CHUNK:Defining version and initial constants... ---
-        const APP_VERSION = '24.3.0';
+        const APP_VERSION = '24.5.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -76,7 +75,7 @@
             { code: 'CNY', name: '人民幣' }, { code: 'GBP', name: '英鎊' }, { code: 'AUD', name: '澳幣' },
             { code: 'CAD', name: '加幣' }, { code: 'HKD', name: '港幣' }, { code: 'SGD', name: '新加坡幣' },
             { code: 'KRW', name: '韓元' }, { code: 'CHF', name: '瑞士法郎' }, { code: 'NZD', name: '紐西蘭幣' },
-            { code: 'THB', name: '泰銖' }, { code: 'VND', name: '越南盾' }, { code: 'MYR', name: '馬來西亞林吉特' }
+            { code: 'THB', name: '泰銖' }, { code: 'VND', name: '越南盾' }, { code: 'MYR', name: '馬幣' }
         ];
 
         const formatMoney = (amount) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', currencyDisplay: 'code', maximumFractionDigits: 0 }).format(amount).replace('TWD', 'NTD');
@@ -90,13 +89,8 @@
         
         const getLocalDateString = () => {
             const d = new Date();
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         };
-
-        const generateCorrectedHistory = () => [];
 
         // --- STREAMING_CHUNK:Initializing audio and utility engines... ---
         const SoundEngine = {
@@ -121,24 +115,18 @@
                         case 'pop': osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); osc.frequency.linearRampToValueAtTime(600, now + 0.1); gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1); osc.start(now); osc.stop(now + 0.1); break;
                         default: break;
                     }
-                } catch (e) { console.error("Audio playback error", e); }
+                } catch (e) {}
             }
         };
 
         const TUTORIAL_STEPS = [
             { targetId: null, title: "歡迎使用 AssetPilot", content: "全新升級的資產導航員。讓我們花 1 分鐘，帶您快速掌握資產管理的秘訣。", tab: "dashboard" },
-            { targetId: "main-nav", title: "三大核心功能", content: "這是您的指揮艙。隨時切換「戰情室」、「金庫」與「分析」三大頁面，從不同維度掌握財務狀況。", tab: "dashboard" },
-            { targetId: "chart-area", title: "戰情室：資產趨勢", content: "首頁最顯眼的地方顯示您的資產走勢。支援日、月、年切換，左右滑動可查看歷史紀錄。", tab: "dashboard" },
-            { targetId: "allocation-section", title: "戰情室：資產配置", content: "一眼看穿您的資產分布。透過顏色區塊，快速了解現金、台股、外幣與海外投資的佔比，確保投資組合平衡。", tab: "dashboard" },
-            { targetId: "sop-section", title: "戰情室：每月任務", content: "理財需要紀律。在這裡設定每月的 SOP（如：發薪日分配、繳卡費），按部就班完成任務。", tab: "dashboard" },
+            { targetId: "main-nav", title: "三大核心功能", content: "這是您的指揮艙。隨時切換「戰情室」、「金庫」與「分析」三大頁面。", tab: "dashboard" },
+            { targetId: "chart-area", title: "戰情室：資產趨勢", content: "首頁顯示您的資產走勢。支援日、月、年切換，左右滑動可查看歷史紀錄。", tab: "dashboard" },
             { targetId: "nav-wallet", title: "前往金庫", content: "接下來我們進入「金庫」，這是您管理所有帳戶與資產的核心區域。", tab: "wallet" },
-            { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊各區塊標題旁的「+」號，即可新增該類別的帳戶或股票。現在所有輸入都支援計算機功能！", tab: "wallet" },
-            { targetId: "wallet-reorder-btns-cashTW", title: "金庫：自由排序", content: "每個人的習慣不同。透過箭頭，您可以自由上下移動區塊，將最常查看的資產移到最上方。", tab: "wallet" },
-            { targetId: "nav-analysis", title: "前往分析", content: "最後是「分析」頁面，這裡提供月度報表與目標追蹤。", tab: "analysis" },
-            { targetId: "goal-add-btn", title: "分析：設定目標", content: "現在可以設定「專款專用」的目標了！輸入金額時同樣支援計算機，方便您計算總需求。", tab: "analysis" },
-            { targetId: "header-refresh", title: "即時更新", content: "回到頂部工具列。點擊此按鈕，系統會立即連線更新所有「即時股價」與「匯率」，計算最新身價。", tab: "dashboard" },
-            { targetId: "header-privacy", title: "隱私保護", content: "在公共場合不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字。", tab: "dashboard" },
-            { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
+            { targetId: "wallet-add-cash", title: "金庫：新增資產", content: "點擊標題旁的「+」號即可新增資產。新版支援「智能股票搜尋」，打字就會自動帶出代碼！", tab: "wallet" },
+            { targetId: "header-refresh", title: "即時連線更新", content: "回到頂部工具列。點擊此按鈕，系統會立即從 Yahoo Finance 更新即時股價與各國匯率。", tab: "dashboard" },
+            { targetId: "header-privacy", title: "隱私保護", content: "不想被看到金額？點擊「眼睛」圖示，一鍵隱藏所有敏感數字與佔比。", tab: "dashboard" }
         ];
 
         // --- STREAMING_CHUNK:Defining UI components (Icon, Toast, Modals)... ---
@@ -148,19 +136,6 @@
             <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                 <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />
                 <span className="text-xs font-bold">{message}</span>
-            </div>
-        );
-
-        const UpdateNotification = ({ show, onUpdate, newVersion }) => (
-            <div className={`fixed bottom-24 right-4 bg-blue-600 text-white p-4 rounded-xl shadow-2xl border border-blue-400 z-[500] transition-all duration-500 transform ${show ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'} max-w-[280px]`}>
-                <div className="flex items-start gap-3">
-                    <div className="bg-white/20 p-2 rounded-full"><Icon name="arrow-up-circle" className="w-6 h-6 text-white" /></div>
-                    <div>
-                        <h4 className="font-bold text-sm mb-1">發現新版本 {newVersion}</h4>
-                        <p className="text-xs text-blue-100 mb-3 leading-tight">AssetPilot 已發布更新！點擊下方按鈕以套用新功能。</p>
-                        <button onClick={onUpdate} className="bg-white text-blue-600 px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-50 transition-colors w-full shadow-sm">立即重新整理</button>
-                    </div>
-                </div>
             </div>
         );
 
@@ -221,22 +196,6 @@
             );
         };
 
-        const WelcomeModal = ({ onConfirm }) => {
-            const [name, setName] = useState('');
-            return (
-                <div className="fixed inset-0 z-[400] bg-black/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-500"></div>
-                        <div className="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center mx-auto mb-6"><Icon name="user-circle" className="w-8 h-8 text-blue-400" /></div>
-                        <h2 className="text-2xl font-bold text-white mb-2">歡迎使用 AssetPilot</h2>
-                        <p className="text-slate-400 text-sm mb-8">首先，請問我們該如何稱呼您？</p>
-                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl p-4 text-center text-white text-lg focus:border-blue-500 outline-none mb-6 placeholder-slate-600 transition-all" placeholder="輸入您的暱稱" autoFocus onKeyDown={(e) => { if(e.key === 'Enter' && name.trim()) onConfirm(name); }} />
-                        <button onClick={() => onConfirm(name.trim() || 'User')} className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold text-lg shadow-lg shadow-blue-500/20 transition-all transform active:scale-95">開始旅程</button>
-                    </div>
-                </div>
-            );
-        };
-
         const Calculator = ({ initialValue, onValueChange, onConfirm, showConfirmBtn = true, playSfx }) => {
             const [display, setDisplay] = useState(initialValue ? formatNumberInput(initialValue) : '0');
             const [equation, setEquation] = useState('');
@@ -246,21 +205,13 @@
 
             const updateValue = (newDisplay) => {
                 setDisplay(newDisplay);
-                if (onValueChange) {
-                    onValueChange(getRaw(newDisplay));
-                }
+                if (onValueChange) onValueChange(getRaw(newDisplay));
             };
 
             const handleNum = (num) => {
                 playSfx('tap');
-                if (isNewNumber) {
-                    updateValue(num === '.' ? '0.' : num);
-                    setIsNewNumber(false);
-                } else {
-                    if (num === '.' && display.includes('.')) return;
-                    const raw = display.replace(/,/g, '') + num;
-                    updateValue(formatNumberInput(raw));
-                }
+                if (isNewNumber) { updateValue(num === '.' ? '0.' : num); setIsNewNumber(false); } 
+                else { if (num === '.' && display.includes('.')) return; const raw = display.replace(/,/g, '') + num; updateValue(formatNumberInput(raw)); }
             };
 
             const handleOp = (op) => {
@@ -270,28 +221,16 @@
                 setIsNewNumber(true);
             };
 
-            const handleClear = () => {
-                playSfx('delete');
-                updateValue('0');
-                setEquation('');
-                setIsNewNumber(true);
-            };
+            const handleClear = () => { playSfx('delete'); updateValue('0'); setEquation(''); setIsNewNumber(true); };
 
             const handleEq = () => {
                 if (!equation) return;
                 try {
                     const expression = `${equation.replace(/,/g, '')} ${getRaw(display)}`;
                     const result = Function('"use strict";return (' + expression + ')')();
-                    const rounded = Math.round(result * 100) / 100;
-                    
-                    updateValue(formatNumberInput(rounded));
-                    setEquation('');
-                    setIsNewNumber(true);
-                    playSfx('success');
-                } catch (e) {
-                    setDisplay('Error');
-                    setEquation('');
-                }
+                    updateValue(formatNumberInput(Math.round(result * 100) / 100));
+                    setEquation(''); setIsNewNumber(true); playSfx('success');
+                } catch (e) { setDisplay('Error'); setEquation(''); }
             };
 
             return (
@@ -316,46 +255,6 @@
             );
         };
 
-        const GoalInputModal = ({ headerTitle, defaultTitle, defaultTarget, linkedAccounts, cash, foreignCash, deadline, onConfirm, onClose, playSfx }) => {
-            const [newTitle, setNewTitle] = useState(defaultTitle || '');
-            const [newTarget, setNewTarget] = useState(defaultTarget || 0);
-            const [newDeadline, setNewDeadline] = useState(deadline || '');
-            const [selectedLinks, setSelectedLinks] = useState(linkedAccounts || []);
-
-            const toggleLink = (id) => {
-                if (id === 'total_assets') {
-                    if (selectedLinks.includes('total_assets')) { setSelectedLinks([]); } else { setSelectedLinks(['total_assets']); }
-                } else {
-                    let newLinks = selectedLinks.filter(lid => lid !== 'total_assets');
-                    if (newLinks.includes(id)) { newLinks = newLinks.filter(lid => lid !== id); } else { newLinks = [...newLinks, id]; }
-                    setSelectedLinks(newLinks);
-                }
-            };
-            const assetGroups = [{ name: '台幣現金', items: cash }, { name: '外幣現金', items: foreignCash }];
-            const isTotalAssets = selectedLinks.includes('total_assets');
-            const totalAssetOption = { id: 'total_assets', name: '💰 總資產 (所有帳戶)' };
-
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom flex flex-col max-h-[95vh]" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4 flex-shrink-0"><h3 className="text-lg font-bold text-white">{headerTitle}</h3><button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
-                        <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">
-                            <div><label className="text-xs text-slate-400 mb-1 block">目標名稱</label><input type="text" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" placeholder="例如：日本旅遊基金" /></div>
-                            
-                            <div>
-                                <label className="text-xs text-slate-400 mb-1 block">目標金額 (計算機)</label>
-                                <Calculator initialValue={newTarget} onValueChange={setNewTarget} showConfirmBtn={false} playSfx={playSfx} />
-                            </div>
-
-                            <div><label className="text-xs text-slate-400 mb-1 block">目標期限 (選填)</label><div className="flex gap-2"><input type="date" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /><button onClick={() => setNewDeadline('')} className="p-3 bg-slate-900 border border-slate-600 rounded-lg text-slate-400 hover:text-white hover:border-slate-400" title="清除日期"><Icon name="x" className="w-5 h-5" /></button></div></div>
-                            <div><label className="text-xs text-slate-400 mb-2 block">綁定資金來源</label><div className="space-y-3"><div onClick={() => { playSfx('tap'); toggleLink('total_assets'); }} className={`flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${isTotalAssets ? 'bg-emerald-600/20 border-emerald-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className={`text-sm font-bold ${isTotalAssets ? 'text-emerald-400' : 'text-slate-400'}`}>{totalAssetOption.name}</span>{isTotalAssets && <Icon name="check-circle" className="w-4 h-4 text-emerald-400" />}</div>{assetGroups.map(group => (group.items.length > 0 && (<div key={group.name}><div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-wider">{group.name}</div><div className="space-y-1">{group.items.map(item => (<div key={item.id} onClick={() => { playSfx('tap'); toggleLink(item.id); }} className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition-all ${selectedLinks.includes(item.id) ? 'bg-blue-600/20 border-blue-500' : 'bg-slate-900/50 border-transparent hover:bg-slate-900'}`}><span className="text-xs text-slate-300 truncate max-w-[200px]">{item.name}</span>{selectedLinks.includes(item.id) && <Icon name="check" className="w-3 h-3 text-blue-400" />}</div>))}</div></div>)))}</div></div>
-                        </div>
-                        <div className="pt-4 mt-2 border-t border-slate-700 flex-shrink-0"><button onClick={() => { if(newTitle && newTarget) { const finalLinks = selectedLinks.length === 0 ? ['total_assets'] : selectedLinks; onConfirm(newTitle, newTarget, finalLinks, newDeadline); } }} className="w-full py-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-lg shadow-lg shadow-purple-600/20">儲存設定</button></div>
-                    </div>
-                </div>
-            );
-        };
-
         const AssetTrendChart = ({ history, timeRange, mode, customDates, isPrivacyMode }) => {
             const chartRef = useRef(null);
             const chartInstance = useRef(null);
@@ -364,12 +263,11 @@
             const filteredData = useMemo(() => {
                 if(!history || history.length === 0) return [];
                 const parseDate = (str) => new Date(str.replace(/-/g, '/')); 
-                let chartHistory = [...history];
-                chartHistory.sort((a, b) => a.date.localeCompare(b.date));
+                let chartHistory = [...history].sort((a, b) => a.date.localeCompare(b.date));
                 
-                // --- 解決重複資料導致破版的問題 ---
+                // --- 防呆：去重機制保留每日最新一筆 ---
                 const uniqueHistoryMap = new Map();
-                chartHistory.forEach(item => { uniqueHistoryMap.set(item.date, item); });
+                chartHistory.forEach(item => uniqueHistoryMap.set(item.date, item));
                 const uniqueHistory = Array.from(uniqueHistoryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
                 
                 let rangeData = [];
@@ -387,9 +285,7 @@
                 const groups = {};
                 rangeData.forEach(item => {
                     const d = parseDate(item.date);
-                    let key;
-                    if (timeRange === '月') { key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; } 
-                    else if (timeRange === '年') { key = `${d.getFullYear()}`; }
+                    let key = timeRange === '月' ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : `${d.getFullYear()}`;
                     groups[key] = item; 
                 });
                 return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
@@ -430,6 +326,7 @@
                 const pointBorders = displayData.map((_, i) => i === displayData.length - 1 ? color : color);
                 const pointBorderWidths = displayData.map((_, i) => i === displayData.length - 1 ? 3 : 0);
 
+                // --- 解決貼頂與爆框 ---
                 const maxVal = displayData.length > 0 ? Math.max(...displayData) : 0;
                 const minVal = displayData.length > 0 ? Math.min(...displayData) : 0;
                 const range = maxVal - minVal;
@@ -510,7 +407,6 @@
             if (total === 0) return <div className="text-center text-xs text-slate-500 py-4">無資產數據</div>;
             const pCash = (cash / total) * 100; const pTw = (tw / total) * 100; const pUs = (us / total) * 100;
             const [selected, setSelected] = useState(null);
-            const displayVal = (val) => isPrivacyMode ? '****' : formatMoney(val);
             const handleSelect = (type) => { playSfx('tap'); setSelected(selected === type ? null : type); };
             return (
                 <div className={`w-full transition-all duration-300 ${isPrivacyMode ? 'blur-sm' : ''}`}>
@@ -520,465 +416,13 @@
                         {pUs > 0 && <div style={{ flexGrow: pUs }} className="bg-purple-500 hover:opacity-90 transition-opacity" onClick={() => handleSelect('us')}></div>}
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{displayVal(cash)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{displayVal(tw)}</div>}</div>
-                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">外資</span></div><div className="text-sm font-bold text-white">{pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{displayVal(us)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'cash' ? 'bg-emerald-500/10 ring-1 ring-emerald-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('cash')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div><span className="text-xs text-slate-400">現金</span></div><div className="text-sm font-bold text-white">{isPrivacyMode ? '**.*' : pCash.toFixed(0)}%</div>{selected === 'cash' && <div className="text-[10px] text-emerald-400 font-mono mt-1">{isPrivacyMode ? '****' : formatMoney(cash)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'tw' ? 'bg-sky-500/10 ring-1 ring-sky-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('tw')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-sky-500"></div><span className="text-xs text-slate-400">台股</span></div><div className="text-sm font-bold text-white">{isPrivacyMode ? '**.*' : pTw.toFixed(0)}%</div>{selected === 'tw' && <div className="text-[10px] text-sky-400 font-mono mt-1">{isPrivacyMode ? '****' : formatMoney(tw)}</div>}</div>
+                        <div className={`p-2 rounded-lg transition-colors cursor-pointer ${selected === 'us' ? 'bg-purple-500/10 ring-1 ring-purple-500' : 'hover:bg-white/5'}`} onClick={() => handleSelect('us')}><div className="flex items-center justify-center space-x-1 mb-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div><span className="text-xs text-slate-400">外資</span></div><div className="text-sm font-bold text-white">{isPrivacyMode ? '**.*' : pUs.toFixed(0)}%</div>{selected === 'us' && <div className="text-[10px] text-purple-400 font-mono mt-1">{isPrivacyMode ? '****' : formatMoney(us)}</div>}</div>
                     </div>
                 </div>
             );
         };
-
-        // --- STREAMING_CHUNK:V24.3 Ultra Share Modal Component (Anti-Clip, iOS Native Fix)... ---
-        const ShareModal = ({ onClose, userName, totalNetWorth, ytdStats, cash, tw, us, isPrivacyMode, playSfx, goals, history }) => {
-            const reportRef = useRef(null);
-            const [isGenerating, setIsGenerating] = useState(true);
-            const [cardType, setCardType] = useState('overview');
-            const [selectedGoalIndex, setSelectedGoalIndex] = useState(0);
-            const [previewBlob, setPreviewBlob] = useState(null);
-
-            const displayMoney = (val) => isPrivacyMode ? '****' : formatMoney(val);
-            const displayPercent = (val) => isPrivacyMode ? '**.*%' : `${val > 0 ? '+' : ''}${val.toFixed(2)}%`;
-            
-            const total = cash + tw + us;
-            const pCash = total === 0 ? 0 : (cash / total) * 100;
-            const pTw = total === 0 ? 0 : (tw / total) * 100;
-            const pUs = total === 0 ? 0 : (us / total) * 100;
-
-            // 動態字體防爆框邏輯，大幅度縮小過長的字體，且移除會破壞 html2canvas 的 CSS
-            const fitTextSize = (text) => {
-                if(isPrivacyMode) return 'text-4xl';
-                const len = text.length;
-                if (len <= 11) return 'text-4xl';
-                if (len <= 14) return 'text-3xl';
-                if (len <= 16) return 'text-2xl';
-                return 'text-xl';
-            };
-
-            // 背景預渲染影像機制 (V24.2)
-            useEffect(() => {
-                let mounted = true;
-                const generateImage = async () => {
-                    setIsGenerating(true);
-                    setPreviewBlob(null);
-                    // 讓 React 確實渲染 DOM，避免太快截圖
-                    await new Promise(r => setTimeout(r, 400));
-                    
-                    if (!mounted || !reportRef.current) return;
-                    try {
-                        const canvas = await window.html2canvas(reportRef.current, {
-                            scale: window.devicePixelRatio > 1 ? window.devicePixelRatio * 1.5 : 3, // 最佳化高解析度，避免過大記憶體溢出
-                            backgroundColor: '#09090b',
-                            useCORS: true,
-                            logging: false
-                        });
-                        canvas.toBlob((blob) => {
-                            if (mounted) {
-                                setPreviewBlob(blob);
-                                setIsGenerating(false);
-                            }
-                        }, 'image/png', 1.0);
-                    } catch (e) {
-                        console.error("生成圖片失敗", e);
-                        if(mounted) setIsGenerating(false);
-                    }
-                };
-                generateImage();
-                return () => { mounted = false; };
-            }, [cardType, selectedGoalIndex, isPrivacyMode, totalNetWorth]);
-
-            const handleShare = async () => {
-                playSfx('tap');
-                if (!previewBlob) return;
-                
-                const file = new File([previewBlob], `AssetPilot_${cardType}_${getLocalDateString()}.png`, { type: 'image/png' });
-                const shareData = { 
-                    files: [file], 
-                    title: 'AssetPilot 財務戰報', 
-                    text: '分享我的 AssetPilot 最新戰報！' 
-                };
-                
-                if (navigator.canShare && navigator.canShare(shareData)) {
-                    try {
-                        await navigator.share(shareData);
-                        playSfx('success');
-                    } catch (e) {
-                        if (e.name !== 'AbortError') fallbackDownload(previewBlob);
-                    }
-                } else {
-                    fallbackDownload(previewBlob);
-                }
-            };
-
-            const fallbackDownload = (blob) => {
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `AssetPilot_${cardType}_${getLocalDateString()}.png`;
-                a.click();
-                URL.revokeObjectURL(url);
-                playSfx('success');
-            };
-
-            const switchGoal = (dir) => {
-                playSfx('switch');
-                if(!goals || goals.length === 0) return;
-                let next = selectedGoalIndex + dir;
-                if(next >= goals.length) next = 0;
-                if(next < 0) next = goals.length - 1;
-                setSelectedGoalIndex(next);
-            };
-
-            const renderTrendAreaChart = () => {
-                if (!history || history.length < 2) return <div className="text-zinc-500 text-xs text-center mt-8">資料不足以繪製趨勢</div>;
-                // 去重
-                const uniqueHistoryMap = new Map();
-                history.forEach(item => { uniqueHistoryMap.set(item.date, item); });
-                const chartHistory = Array.from(uniqueHistoryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-                const recent = chartHistory.slice(-14); // 取近14筆
-
-                const max = Math.max(...recent.map(h => h.total));
-                const min = Math.min(...recent.map(h => h.total));
-                const range = max - min === 0 ? 1 : max - min;
-                const pad = range * 0.15;
-                const scaledMin = min - pad;
-                const scaledMax = max + pad;
-                const scaledRange = scaledMax - scaledMin;
-                
-                const w = 300;
-                const h = 180;
-                
-                const pathPoints = recent.map((item, i) => {
-                    const x = (i / (recent.length - 1)) * w;
-                    const y = h - (((item.total - scaledMin) / scaledRange) * h);
-                    return `${x},${y}`;
-                }).join(' ');
-                
-                const areaPoints = `0,${h} ${pathPoints} ${w},${h}`;
-                
-                return (
-                    <div className="w-full mt-2 relative flex flex-col justify-center px-0">
-                        <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto overflow-visible">
-                            <defs>
-                                <linearGradient id="trendGrad" x1="0" x2="0" y1="0" y2="1">
-                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4"/>
-                                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0"/>
-                                </linearGradient>
-                            </defs>
-                            <polygon points={areaPoints} fill="url(#trendGrad)" />
-                            <polyline points={pathPoints} fill="none" stroke="#60a5fa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                            
-                            {recent.length > 0 && (
-                                <circle 
-                                    cx={w} 
-                                    cy={h - (((recent[recent.length - 1].total - scaledMin) / scaledRange) * h)} 
-                                    r="5" fill="#bfdbfe" stroke="#09090b" strokeWidth="2" 
-                                    className="drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]"
-                                />
-                            )}
-                        </svg>
-                    </div>
-                );
-            };
-
-            const renderInvestmentDonut = () => {
-                const investTotal = tw + us;
-                const r = 50;
-                const circ = 2 * Math.PI * r;
-                let dashTw = 0, dashUs = 0;
-                if (investTotal > 0) {
-                    dashTw = (tw / investTotal) * circ;
-                    dashUs = (us / investTotal) * circ;
-                }
-                return (
-                    <div className="relative w-32 h-32 flex items-center justify-center mx-auto mb-6">
-                        <svg height="128" width="128" className="rotate-[-90deg] drop-shadow-xl">
-                            {investTotal === 0 ? (
-                                <circle stroke="#27272a" strokeWidth="16" r={r} cx="64" cy="64" fill="transparent" />
-                            ) : (
-                                <>
-                                    <circle stroke="#0ea5e9" strokeWidth="16" strokeDasharray={`${dashTw} ${circ}`} strokeLinecap="round" r={r} cx="64" cy="64" fill="transparent" />
-                                    <circle stroke="#a855f7" strokeWidth="16" strokeDasharray={`${dashUs} ${circ}`} strokeDashoffset={-dashTw} strokeLinecap="round" r={r} cx="64" cy="64" fill="transparent" />
-                                </>
-                            )}
-                        </svg>
-                        <div className="absolute flex flex-col items-center">
-                            <Icon name="trending-up" className="w-6 h-6 text-zinc-300" />
-                        </div>
-                    </div>
-                );
-            };
-
-            return (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-[600] p-6 animate-fade-in overflow-y-auto" onClick={onClose}>
-                    
-                    {/* 頂部分頁控制列 */}
-                    <div className="flex bg-zinc-900 p-1 rounded-xl mb-6 shadow-2xl border border-zinc-800 w-full max-w-[300px]" onClick={e => e.stopPropagation()}>
-                        {[{id:'overview', icon:'layout', label:'綜合'}, {id:'investment', icon:'pie-chart', label:'投資'}, {id:'goals', icon:'target', label:'目標'}, {id:'trend', icon:'activity', label:'趨勢'}].map(t => (
-                            <button key={t.id} onClick={() => { playSfx('tap'); setCardType(t.id); }} className={`flex-1 flex flex-col items-center justify-center py-2.5 rounded-lg text-[10px] font-bold transition-all ${cardType === t.id ? 'bg-zinc-800 text-white shadow-md border border-zinc-700' : 'text-zinc-500 hover:text-white'}`}>
-                                <Icon name={t.icon} className="w-4 h-4 mb-1" /> {t.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* 畫布區域 (強制 300x533，9:16) */}
-                    <div className="relative shadow-2xl flex-shrink-0" onClick={e => e.stopPropagation()}>
-                        
-                        {/* 目標切換的覆蓋層 (防止被截圖工具封鎖事件) */}
-                        {cardType === 'goals' && goals && goals.length > 0 && (
-                            <div className="absolute top-[200px] left-0 right-0 w-[300px] flex justify-between px-2 z-50 pointer-events-none">
-                                <button onClick={(e)=>{e.preventDefault(); e.stopPropagation(); switchGoal(-1);}} className="pointer-events-auto p-3 text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 rounded-full transition-all shadow-lg active:scale-90 border border-zinc-700"><Icon name="chevron-left" className="w-5 h-5" /></button>
-                                <button onClick={(e)=>{e.preventDefault(); e.stopPropagation(); switchGoal(1);}} className="pointer-events-auto p-3 text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 rounded-full transition-all shadow-lg active:scale-90 border border-zinc-700"><Icon name="chevron-right" className="w-5 h-5" /></button>
-                            </div>
-                        )}
-
-                        <div ref={reportRef} className="w-[300px] h-[533px] bg-[#09090b] rounded-[24px] p-6 flex flex-col relative overflow-hidden border border-zinc-800/80">
-                            
-                            {/* 背景光暈 (避開 opacity 導致 html2canvas 破圖，純色混合) */}
-                            <div className={`absolute top-[-10%] right-[-10%] w-[70%] h-[70%] rounded-full blur-[60px] ${cardType==='investment'?'bg-emerald-600/30':cardType==='goals'?'bg-amber-600/30':cardType==='trend'?'bg-blue-600/30':'bg-indigo-600/30'}`}></div>
-                            <div className={`absolute bottom-[-10%] left-[-10%] w-[70%] h-[70%] rounded-full blur-[60px] ${cardType==='investment'?'bg-sky-600/30':cardType==='goals'?'bg-orange-600/30':cardType==='trend'?'bg-fuchsia-600/30':'bg-blue-600/30'}`}></div>
-
-                            {/* 內容區塊 */}
-                            <div className="relative z-10 h-full flex flex-col justify-between">
-                                
-                                {/* Header */}
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <div className="text-white font-bold text-base flex items-center tracking-wide">
-                                            <Icon name="shield-check" className="w-4 h-4 mr-1.5 text-zinc-300" />AssetPilot
-                                        </div>
-                                        <div className="text-[9px] text-zinc-500 mt-0.5 font-mono">{getLocalDateString()}</div>
-                                    </div>
-                                    <div className="bg-zinc-800/80 border border-zinc-700 px-3 py-1.5 rounded-full text-[9px] font-bold text-zinc-300 flex items-center">
-                                        <Icon name="user" className="w-3 h-3 mr-1.5" /> {userName}
-                                    </div>
-                                </div>
-
-                                {/* Body */}
-                                <div className="flex-1 flex flex-col justify-center items-center w-full">
-                                    
-                                    {cardType === 'overview' && (
-                                        <div className="w-full flex flex-col items-center">
-                                            <div className="mb-10 text-center w-full">
-                                                <div className="text-[10px] text-zinc-400 mb-2 tracking-[0.2em] uppercase font-bold">TOTAL NET WORTH</div>
-                                                {/* V24.3: 移除 truncate 與 overflow-hidden，確保字體不會被切一半，並加入安全的 lineHeight 與 padding */}
-                                                <div className="w-full px-2 flex justify-center items-center py-1">
-                                                    <span className={`${fitTextSize(displayMoney(totalNetWorth))} font-mono font-bold text-white`} style={{ lineHeight: '1.2', wordBreak: 'break-word' }}>
-                                                        {displayMoney(totalNetWorth)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="w-full space-y-4 px-2">
-                                                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex justify-between items-center">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-bold mb-1">YTD Growth</span>
-                                                        <span className={`text-sm font-bold ${ytdStats.diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{displayPercent(ytdStats.percent)}</span>
-                                                    </div>
-                                                    <div className="text-right font-mono font-bold text-white text-sm">
-                                                        {isPrivacyMode ? '****' : `${ytdStats.diff > 0 ? '+' : ''}${formatMoney(ytdStats.diff)}`}
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="w-full pt-4">
-                                                    <div className="h-2 w-full flex rounded-full overflow-hidden bg-zinc-800 mb-3">
-                                                        {pCash > 0 && <div style={{ flexGrow: pCash }} className="bg-emerald-500"></div>}
-                                                        {pTw > 0 && <div style={{ flexGrow: pTw }} className="bg-sky-500"></div>}
-                                                        {pUs > 0 && <div style={{ flexGrow: pUs }} className="bg-purple-500"></div>}
-                                                    </div>
-                                                    <div className="flex justify-between text-[9px] text-zinc-400 font-bold uppercase tracking-wider">
-                                                        <span>Cash {pCash.toFixed(0)}%</span>
-                                                        <span>TW {pTw.toFixed(0)}%</span>
-                                                        <span>US {pUs.toFixed(0)}%</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {cardType === 'investment' && (
-                                        <div className="w-full flex flex-col items-center">
-                                            <div className="mb-4 text-center w-full">
-                                                <div className="text-[10px] text-zinc-400 mb-1 tracking-[0.2em] uppercase font-bold">PORTFOLIO</div>
-                                            </div>
-                                            
-                                            {renderInvestmentDonut()}
-                                            
-                                            <div className="w-full px-2 flex justify-center items-center py-1 mb-6">
-                                                <span className={`${fitTextSize(displayMoney(tw + us))} font-mono font-bold text-white`} style={{ lineHeight: '1.2', wordBreak: 'break-word' }}>
-                                                    {displayMoney(tw + us)}
-                                                </span>
-                                            </div>
-
-                                            <div className="w-full grid grid-cols-1 gap-2.5 px-2">
-                                                <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 flex justify-between items-center">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-6 rounded-full bg-sky-500"></div>
-                                                        <span className="text-xs text-zinc-300 font-bold">台股現貨</span>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className="text-sm font-bold text-white font-mono">{displayMoney(tw)}</div>
-                                                        <div className="text-[9px] text-zinc-500 font-mono mt-0.5">{(tw+us)>0?((tw/(tw+us))*100).toFixed(1):0}%</div>
-                                                    </div>
-                                                </div>
-                                                <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 flex justify-between items-center">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-2 h-6 rounded-full bg-purple-500"></div>
-                                                        <span className="text-xs text-zinc-300 font-bold">海外投資</span>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className="text-sm font-bold text-white font-mono">{displayMoney(us)}</div>
-                                                        <div className="text-[9px] text-zinc-500 font-mono mt-0.5">{(tw+us)>0?((us/(tw+us))*100).toFixed(1):0}%</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {cardType === 'goals' && (
-                                        <div className="w-full flex flex-col items-center">
-                                            {goals && goals.length > 0 ? (() => {
-                                                const g = goals[selectedGoalIndex];
-                                                const current = totalNetWorth; // 簡化示範，依據實際進度
-                                                const pct = g.target > 0 ? (current / g.target) * 100 : 0;
-                                                const visualPct = Math.min(100, Math.max(0, pct));
-                                                
-                                                return (
-                                                    <div className="text-center flex flex-col items-center w-full relative">
-                                                        
-                                                        <div className="text-[10px] text-amber-500 mb-6 font-bold tracking-widest uppercase bg-amber-500/10 px-3 py-1 rounded border border-amber-500/20">FINANCIAL GOAL</div>
-                                                        
-                                                        <div className="text-lg font-bold text-white mb-6 px-4 truncate w-full">{g.title}</div>
-                                                        
-                                                        <div className="relative w-36 h-36 flex items-center justify-center mb-8">
-                                                            <svg height="144" width="144" className="rotate-[-90deg] drop-shadow-xl">
-                                                                <circle stroke="#27272a" strokeWidth="12" r="64" cx="72" cy="72" fill="transparent" />
-                                                                <circle stroke={pct >= 100 ? '#f59e0b' : '#3b82f6'} strokeWidth="12" strokeDasharray={`${2*Math.PI*64} ${2*Math.PI*64}`} style={{ strokeDashoffset: `${2*Math.PI*64 - (visualPct/100)*2*Math.PI*64}` }} strokeLinecap="round" r="64" cx="72" cy="72" fill="transparent" />
-                                                            </svg>
-                                                            <div className="absolute flex flex-col items-center">
-                                                                <span className={`text-2xl font-bold font-mono ${pct >= 100 ? 'text-amber-400' : 'text-white'}`}>{isPrivacyMode ? '**' : pct.toFixed(0)}%</span>
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        <div className="bg-zinc-900/90 border border-zinc-800 px-6 py-3.5 rounded-2xl w-full max-w-[220px]">
-                                                            <div className="flex justify-between items-center mb-1.5">
-                                                                <span className="text-[9px] text-zinc-500 uppercase">Target</span>
-                                                                <span className="text-xs font-bold text-white font-mono">{displayMoney(g.target)}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-[9px] text-zinc-500 uppercase">Current</span>
-                                                                <span className="text-xs font-bold text-blue-400 font-mono">{displayMoney(current)}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })() : (
-                                                <div className="text-center py-10 text-zinc-600">
-                                                    <Icon name="target" className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                                                    <p className="text-xs">No active goals</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {cardType === 'trend' && (
-                                        <div className="w-full flex flex-col items-center">
-                                            <div className="mb-4 text-center w-full">
-                                                <div className="text-[10px] text-zinc-400 mb-2 tracking-[0.2em] uppercase font-bold">WEALTH TREND</div>
-                                                <div className="w-full px-2 flex justify-center items-center py-1">
-                                                    <span className={`${fitTextSize(displayMoney(totalNetWorth))} font-mono font-bold text-white`} style={{ lineHeight: '1.2', wordBreak: 'break-word' }}>
-                                                        {displayMoney(totalNetWorth)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            {renderTrendAreaChart()}
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                {/* Footer */}
-                                <div className="mt-6 text-center border-t border-zinc-800 pt-4">
-                                    <span className="text-[8px] text-zinc-600 font-mono tracking-widest uppercase font-bold">Powered by AssetPilot</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="w-full max-w-[300px] mt-6 flex flex-col gap-3 relative z-10">
-                        <button 
-                            onClick={handleShare} 
-                            disabled={isGenerating || !previewBlob}
-                            className={`w-full py-4 rounded-xl bg-white text-black font-bold text-sm flex justify-center items-center shadow-[0_0_15px_rgba(255,255,255,0.2)] transition-all ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'active:scale-95 hover:bg-zinc-200'}`}
-                        >
-                            {isGenerating ? <><Icon name="loader" className="w-5 h-5 mr-2 animate-spin" /> 渲染高畫質圖卡中...</> : <><Icon name="share" className="w-5 h-5 mr-2" /> 分享或儲存戰報</>}
-                        </button>
-                        <button onClick={onClose} className="w-full py-3 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white font-bold text-sm transition-colors">
-                            關閉
-                        </button>
-                    </div>
-                </div>
-            );
-        };
-
-        const UpdateResultModal = ({ results, onClose, isPrivacyMode }) => {
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                            {results.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : results.map((item, idx) => (
-                                <div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs">
-                                    <span className="text-slate-300 font-mono max-w-[120px] truncate" title={item.label}>{item.label}</span>
-                                    <span className={`font-mono text-right ${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : item.isError ? 'text-amber-400' : 'text-slate-400'}`}>
-                                        {isPrivacyMode && item.label.includes('變動') ? '****' : item.value}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
-                    </div>
-                </div>
-            );
-        };
-
-        const DateRangeModal = ({ currentDates, onConfirm, onClose }) => {
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="calendar" className="w-5 h-5 mr-2 text-blue-400" /> 自訂區間</h3><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                        <div className="space-y-4"><div><label className="block text-xs text-slate-400 mb-2">開始日期</label><input id="startDate" type="date" defaultValue={currentDates.start} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div><div><label className="block text-xs text-slate-400 mb-2">結束日期</label><input id="endDate" type="date" defaultValue={currentDates.end} className="bg-slate-900 border border-slate-600 rounded-xl p-4 w-full text-white font-mono text-base focus:border-blue-500 outline-none" /></div></div>
-                        <button onClick={() => { const s = document.getElementById('startDate').value; const e = document.getElementById('endDate').value; if (s && e) onConfirm(s, e); }} className="w-full mt-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
-                    </div>
-                </div>
-            );
-        };
-
-        const SopInputModal = ({ title, defaultValue, onConfirm, onClose }) => {
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] sm:p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">{title}</h3><button onClick={onClose} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
-                        <div className="space-y-4 mb-6"><input id="sop-modal-input" type="text" defaultValue={defaultValue} autoFocus className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none text-base" placeholder="請輸入內容..." onKeyDown={(e) => { if (e.key === 'Enter') onConfirm(e.target.value); }} /></div>
-                        <button onClick={() => onConfirm(document.getElementById('sop-modal-input').value)} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
-                    </div>
-                </div>
-            );
-        };
-
-        const SopDetailsModal = ({ sopDetails, setSopDetails, onClose, playSfx }) => {
-            const [isEditing, setIsEditing] = useState(false);
-            const [inputModal, setInputModal] = useState(null); 
-            const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null); 
-            const [confirmDeleteStep, setConfirmDeleteStep] = useState(null); 
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [isEditing, sopDetails]);
-            const openInput = (type, sectionIdx, stepIdx, value) => { playSfx('pop'); setInputModal({ type, sectionIdx, stepIdx, value }); };
-            const handleInputConfirm = (val) => { if (!val) { setInputModal(null); return; } const newDetails = [...sopDetails]; if (inputModal.type === 'addSection') newDetails.push({ title: val, steps: [] }); else if (inputModal.type === 'editSection') newDetails[inputModal.sectionIdx].title = val; else if (inputModal.type === 'addStep') newDetails[inputModal.sectionIdx].steps.push(val); else if (inputModal.type === 'editStep') newDetails[inputModal.sectionIdx].steps[inputModal.stepIdx] = val; setSopDetails(newDetails); setInputModal(null); playSfx('success'); };
-            const handleDeleteSection = (idx) => { if (confirmDeleteIdx === idx) { playSfx('delete'); setSopDetails(sopDetails.filter((_, i) => i !== idx)); setConfirmDeleteIdx(null); } else { playSfx('tap'); setConfirmDeleteIdx(idx); setTimeout(() => setConfirmDeleteIdx(null), 3000); } };
-            const handleDeleteStep = (sectionIdx, stepIdx) => { if (confirmDeleteStep && confirmDeleteStep.sIdx === sectionIdx && confirmDeleteStep.stIdx === stepIdx) { playSfx('delete'); const newDetails = [...sopDetails]; newDetails[sectionIdx].steps = newDetails[sectionIdx].steps.filter((_, i) => i !== stepIdx); setSopDetails(newDetails); setConfirmDeleteStep(null); } else { playSfx('tap'); setConfirmDeleteStep({ sIdx: sectionIdx, stIdx: stepIdx }); setTimeout(() => setConfirmDeleteStep(null), 3000); } };
-            return (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={onClose}>
-                    <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-4 flex-shrink-0"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="book-open" className="w-5 h-5 mr-2 text-yellow-400" /> 標準操作 SOP</h3><div className="flex items-center gap-2"><button onClick={() => { playSfx('tap'); setIsEditing(!isEditing); }} className={`text-xs px-2 py-1 rounded ${isEditing ? 'bg-blue-600 text-white' : 'text-blue-400 border border-blue-400'}`}>{isEditing ? '完成' : '編輯'}</button><button onClick={onClose} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div></div>
-                        <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2 flex-1">{sopDetails.length > 0 ? sopDetails.map((section, idx) => (<div key={idx} className="bg-slate-900/50 p-3 rounded-lg relative group">{isEditing && (<button onClick={() => handleDeleteSection(idx)} className={`absolute top-2 right-2 p-1 transition-colors ${confirmDeleteIdx === idx ? 'text-red-500 bg-red-500/10 rounded font-bold text-xs' : 'text-slate-500 opacity-50 hover:opacity-100 hover:text-red-400'}`}>{confirmDeleteIdx === idx ? '確定?' : <Icon name="trash-2" className="w-4 h-4" />}</button>)}<div onClick={() => isEditing && openInput('editSection', idx, null, section.title)} className={`text-sm font-bold mb-2 flex items-center ${isEditing ? 'text-blue-300 cursor-pointer hover:bg-white/5 p-1 rounded' : 'text-blue-400'}`}>{section.title}{isEditing && <Icon name="edit-2" className="w-3 h-3 ml-2 opacity-50" />}</div><ul className="list-disc list-inside text-xs text-slate-300 space-y-1">{section.steps.map((step, sIdx) => (<li key={sIdx} className="flex items-center justify-between group/step py-1"><span onClick={() => isEditing && openInput('editStep', idx, sIdx, step)} className={`flex-1 ${isEditing ? 'cursor-pointer hover:text-white border-b border-dashed border-slate-600 pb-0.5' : ''}`}>{step}</span>{isEditing && (<button onClick={() => handleDeleteStep(idx, sIdx)} className={`ml-2 p-1 transition-colors ${confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? 'text-red-500 font-bold text-[10px]' : 'text-red-400 opacity-50 hover:opacity-100'}`}>{confirmDeleteStep && confirmDeleteStep.sIdx === idx && confirmDeleteStep.stIdx === sIdx ? '刪除?' : <Icon name="minus-circle" className="w-3 h-3" />}</button>)}</li>))}{isEditing && (<li className="list-none pt-2"><button onClick={() => openInput('addStep', idx)} className="text-xs text-emerald-400 flex items-center p-1 hover:bg-white/5 rounded"><Icon name="plus" className="w-3 h-3 mr-1" /> 新增步驟</button></li>)}</ul></div>)) : <div className="text-slate-500 text-xs text-center py-4">無 SOP 詳細說明</div>}{isEditing && (<button onClick={() => openInput('addSection')} className="w-full py-3 border border-dashed border-slate-600 text-slate-400 rounded-lg text-xs hover:border-slate-400 hover:text-white transition-colors">+ 新增章節</button>)}</div> {inputModal && (<SopInputModal title={inputModal.type === 'addSection' ? '新增章節' : inputModal.type === 'editSection' ? '編輯章節' : inputModal.type === 'addStep' ? '新增步驟' : '編輯步驟'} defaultValue={inputModal.value || ''} onConfirm={handleInputConfirm} onClose={() => { playSfx('pop'); setInputModal(null); }} />)} </div> </div> ); };
 
         const CircularGoal = ({ goal, current, target, onEdit, onDelete, isPrivacyMode, rates, cash, foreignCash, index, totalGoals, onMove }) => {
             const calculateProgress = () => {
@@ -998,7 +442,6 @@
             const actualCurrent = calculateProgress();
             const rawPercentage = target > 0 ? (actualCurrent / target) * 100 : 0;
             const visualPercentage = Math.min(100, Math.max(0, rawPercentage));
-            const displayPercentage = rawPercentage.toFixed(0);
             const isCompleted = rawPercentage >= 100;
 
             const radius = 30; const stroke = 4; const normalizedRadius = radius - stroke * 2; const circumference = normalizedRadius * 2 * Math.PI; const strokeDashoffset = circumference - (visualPercentage / 100) * circumference;
@@ -1024,7 +467,7 @@
                         <div className="text-xs text-slate-400 mb-0.5">目標: {isPrivacyMode ? '****' : formatMoney(target)}</div>
                         <div className={`text-lg font-mono font-bold truncate ${isCompleted ? 'text-yellow-400' : 'text-blue-400'}`}>{isPrivacyMode ? '****' : formatMoney(actualCurrent)}</div>
                     </div>
-                    <div className="relative w-20 h-20 flex items-center justify-center flex-shrink-0"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={isCompleted ? '#eab308' : (visualPercentage >= 100 ? '#10b981' : '#3b82f6')} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className={`absolute text-xs font-bold ${isCompleted ? 'text-yellow-400' : 'text-white'}`}>{displayPercentage}%</span></div>
+                    <div className="relative w-20 h-20 flex items-center justify-center flex-shrink-0"><svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]"><circle stroke="#1e293b" strokeWidth={stroke} r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /><circle stroke={isCompleted ? '#eab308' : (visualPercentage >= 100 ? '#10b981' : '#3b82f6')} strokeWidth={stroke} strokeDasharray={circumference + ' ' + circumference} style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }} strokeLinecap="round" r={normalizedRadius} cx={radius} cy={radius} fill="transparent" /></svg><span className={`absolute text-xs font-bold ${isCompleted ? 'text-yellow-400' : 'text-white'}`}>{isPrivacyMode ? '**.*' : rawPercentage.toFixed(0)}%</span></div>
                 </div>
             );
         };
@@ -1044,69 +487,68 @@
             }
         };
 
-        const fetchExchangeRatesAPI = async (currencies) => {
-            try {
-                const res = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', { cache: 'no-store' }, 4000);
-                if (!res.ok) return null;
-                const data = await res.json();
-                const twdRate = data.rates['TWD'];
-                let newRates = {};
-                currencies.forEach(cur => {
-                    if (cur === 'TWD') return;
-                    if (cur === 'USD') newRates[cur] = twdRate;
-                    else if (data.rates[cur]) newRates[cur] = twdRate / data.rates[cur];
-                });
-                return newRates;
-            } catch (e) {
-                return null;
-            }
-        };
-
-        // --- STREAMING_CHUNK:Main Data Fetching... ---
+        // --- STREAMING_CHUNK:Yahoo Finance Fetchers (Price & Search)... ---
         const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
-            
             const endpoints = [
                 `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`)}`,
                 `https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d&_t=${timestamp}`)}`
             ];
-
             for (const endpoint of endpoints) {
                 try {
                     const res = await fetchWithTimeout(endpoint, { cache: "no-store" }, 3000);
                     if (!res.ok) continue;
-                    
                     let data;
                     if (endpoint.includes('allorigins')) {
                         const json = await res.json();
                         if (!json.contents) continue;
                         data = JSON.parse(json.contents);
-                    } else {
-                        data = await res.json();
-                    }
+                    } else { data = await res.json(); }
                     
                     const meta = data?.chart?.result?.[0]?.meta;
                     if (meta && meta.regularMarketPrice) {
-                        return { 
-                            price: meta.regularMarketPrice, 
-                            name: meta.longName || meta.shortName || null 
-                        };
+                        return { price: meta.regularMarketPrice, name: meta.longName || meta.shortName || null };
                     }
                 } catch (e) {}
             }
             return { price: null, name: null };
         };
 
+        const fetchYahooSearch = async (query) => {
+            if (!query) return [];
+            const timestamp = new Date().getTime();
+            const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=5&newsCount=0&_t=${timestamp}`;
+            const endpoints = [
+                `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(searchUrl)}`,
+                `https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`
+            ];
+            for (const endpoint of endpoints) {
+                try {
+                    const res = await fetchWithTimeout(endpoint, { cache: "no-store" }, 3000);
+                    if (!res.ok) continue;
+                    let data;
+                    if (endpoint.includes('allorigins')) {
+                        const json = await res.json();
+                        if (!json.contents) continue;
+                        data = JSON.parse(json.contents);
+                    } else { data = await res.json(); }
+                    
+                    if (data && data.quotes) {
+                        return data.quotes.filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF' || q.quoteType === 'MUTUALFUND' || q.quoteType === 'INDEX');
+                    }
+                } catch (e) {}
+            }
+            return [];
+        };
+
         const App = () => {
             const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
-            const [foreignStocks, setForeignStocks] = useState(() => { const saved = localStorage.getItem('ap_foreign_stocks'); if (saved) return JSON.parse(saved); const oldUs = localStorage.getItem('ap_us_stocks'); if (oldUs) { const parsed = JSON.parse(oldUs); return parsed.map(s => ({ ...s, currency: 'USD' })); } return INITIAL_FOREIGN_CASH; });
-            const [foreignCash, setForeignCash] = useState(() => { const saved = localStorage.getItem('ap_foreign_cash_list'); if (saved) return JSON.parse(saved); const oldUsCash = localStorage.getItem('ap_us_cash'); if (oldUsCash && parseFloat(oldUsCash) > 0) { return [{ id: 'migrated_usd', name: 'Firstrade 餘額', balance: parseFloat(oldUsCash), currency: 'USD' }]; } return INITIAL_FOREIGN_CASH; });
+            const [foreignStocks, setForeignStocks] = useState(() => { const saved = localStorage.getItem('ap_foreign_stocks'); return saved ? JSON.parse(saved) : INITIAL_FOREIGN_STOCKS; });
+            const [foreignCash, setForeignCash] = useState(() => { const saved = localStorage.getItem('ap_foreign_cash_list'); return saved ? JSON.parse(saved) : INITIAL_FOREIGN_CASH; });
             const [goals, setGoals] = useState(() => JSON.parse(localStorage.getItem('ap_goals')) || INITIAL_GOALS);
-            const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
-            const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [rates, setRates] = useState(() => { const saved = localStorage.getItem('ap_rates_map'); const savedRates = saved ? JSON.parse(saved) : {}; return { ...INITIAL_RATES, ...savedRates }; });
-            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || generateCorrectedHistory());
+            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || []);
             const [walletOrder, setWalletOrder] = useState(() => { const saved = localStorage.getItem('ap_wallet_order'); return saved ? JSON.parse(saved) : ['cashTW', 'cashForeign', 'stockForeign', 'stockTW']; });
             const [userName, setUserName] = useState(() => localStorage.getItem('ap_user_name') || 'User');
             const [soundEnabled, setSoundEnabled] = useState(() => { const saved = localStorage.getItem('ap_sound_enabled'); return saved !== null ? JSON.parse(saved) : true; });
@@ -1120,7 +562,6 @@
             
             const [trendMode, setTrendMode] = useState('total'); 
             const [timeRange, setTimeRange] = useState('日'); 
-            const [customDates, setCustomDates] = useState({ start: '', end: '' }); 
             const [editItem, setEditItem] = useState(null);
             
             const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null, isDanger: false });
@@ -1128,43 +569,39 @@
             const [addItemType, setAddItemType] = useState(null);
             const [editGoal, setEditGoal] = useState(null);
             
-            const [sopEditMode, setSopEditMode] = useState(false);
-            const [showSopModal, setShowSopModal] = useState(false);
-            const [showSettings, setShowSettings] = useState(false); 
-            const [showDateModal, setShowDateModal] = useState(false);
-            const [showShareModal, setShowShareModal] = useState(false);
-            
             const [isUpdating, setIsUpdating] = useState(false);
             const [updateProgressText, setUpdateProgressText] = useState('');
             const [lastUpdate, setLastUpdate] = useState(null);
             const [updateResults, setUpdateResults] = useState(null);
             
-            const [sopTaskInput, setSopTaskInput] = useState(null);
             const [addForm, setAddForm] = useState({ main: '', sub: '', val: 0, cur: 'USD', note: '' });
-            const [updateAvailable, setUpdateAvailable] = useState(null); 
+            const [searchQuery, setSearchQuery] = useState('');
+            const [searchResults, setSearchResults] = useState([]);
+            const [isSearching, setIsSearching] = useState(false);
+            const [hasSearched, setHasSearched] = useState(false);
             
             const [expandedYears, setExpandedYears] = useState({ [new Date().getFullYear()]: true });
             const [expandedMonths, setExpandedMonths] = useState({});
             
             const currentYear = new Date().getFullYear();
 
+            // --- STREAMING_CHUNK:Stock Autocomplete Effect... ---
             useEffect(() => {
-                const checkUpdate = async () => {
-                    try {
-                        const response = await fetch(window.location.href, { cache: "no-store" });
-                        if (response.ok) {
-                            const text = await response.text();
-                            const match = text.match(/const APP_VERSION = '([^']+)';/);
-                            if (match && match[1]) {
-                                const remoteVersion = match[1];
-                                if (remoteVersion !== APP_VERSION) { setUpdateAvailable(remoteVersion); }
-                            }
-                        }
-                    } catch (e) {}
-                };
-                const timer = setTimeout(checkUpdate, 2000);
+                if (!addItemType?.includes('stock')) return;
+                const timer = setTimeout(async () => {
+                    if (searchQuery.trim().length > 1) {
+                        setIsSearching(true);
+                        const results = await fetchYahooSearch(searchQuery);
+                        setSearchResults(results);
+                        setHasSearched(true);
+                        setIsSearching(false);
+                    } else {
+                        setSearchResults([]);
+                        setHasSearched(false);
+                    }
+                }, 600);
                 return () => clearTimeout(timer);
-            }, []);
+            }, [searchQuery, addItemType]);
 
             useEffect(() => { const seen = localStorage.getItem('ap_tutorial_seen'); if (!seen) { setShowWelcome(true); } }, []);
             useEffect(() => { if (showTutorial) { const step = TUTORIAL_STEPS[tutorialStep]; if (step.tab && step.tab !== activeTab) { setActiveTab(step.tab); } } }, [showTutorial, tutorialStep]);
@@ -1173,8 +610,6 @@
             useEffect(() => { localStorage.setItem('ap_foreign_stocks', JSON.stringify(foreignStocks)); }, [foreignStocks]);
             useEffect(() => { localStorage.setItem('ap_foreign_cash_list', JSON.stringify(foreignCash)); }, [foreignCash]);
             useEffect(() => { localStorage.setItem('ap_goals', JSON.stringify(goals)); }, [goals]);
-            useEffect(() => { localStorage.setItem('ap_sop', JSON.stringify(sopList)); }, [sopList]);
-            useEffect(() => { localStorage.setItem('ap_sop_details', JSON.stringify(sopDetails)); }, [sopDetails]);
             useEffect(() => { localStorage.setItem('ap_rates_map', JSON.stringify(rates)); }, [rates]);
             useEffect(() => { localStorage.setItem('ap_history_v3', JSON.stringify(history)); }, [history]);
             useEffect(() => { localStorage.setItem('ap_wallet_order', JSON.stringify(walletOrder)); }, [walletOrder]);
@@ -1188,20 +623,12 @@
             const handleTutorialNext = () => { playSfx('tap'); if (tutorialStep < TUTORIAL_STEPS.length - 1) { setTutorialStep(prev => prev + 1); } else { handleTutorialClose(); } };
             const handleTutorialPrev = () => { playSfx('tap'); if (tutorialStep > 0) setTutorialStep(prev => prev - 1); };
             const handleTutorialClose = () => { playSfx('success'); setShowTutorial(false); setTutorialStep(0); setActiveTab('dashboard'); localStorage.setItem('ap_tutorial_seen', 'true'); triggerToast("導覽完成！開始探索吧"); };
-            const replayTutorial = () => { playSfx('tap'); setShowTutorial(true); setTutorialStep(0); setShowSettings(false); };
 
             const showConfirm = (title, message, onConfirmAction, isDanger = false) => {
                 playSfx('pop');
                 setConfirmDialog({
-                    isOpen: true,
-                    title,
-                    message,
-                    isDanger,
-                    onConfirm: () => {
-                        playSfx(isDanger ? 'delete' : 'success');
-                        onConfirmAction();
-                        setConfirmDialog({ ...confirmDialog, isOpen: false });
-                    }
+                    isOpen: true, title, message, isDanger,
+                    onConfirm: () => { playSfx(isDanger ? 'delete' : 'success'); onConfirmAction(); setConfirmDialog({ ...confirmDialog, isOpen: false }); }
                 });
             };
 
@@ -1211,7 +638,7 @@
             const totalForeignCashTWD = useMemo(() => foreignCash.reduce((acc, c) => { const rate = rates[c.currency] || 1; return acc + ((c.balance || 0) * rate); }, 0), [foreignCash, rates]);
             const totalNetWorth = totalCashTWD + totalTwStocksTWD + totalForeignStocksTWD + totalForeignCashTWD;
             const totalForeignAssetsTWD = totalForeignStocksTWD + totalForeignCashTWD;
-            const activeCurrencies = useMemo(() => { const currencies = new Set(['USD']); foreignStocks.forEach(s => currencies.add(s.currency)); foreignCash.forEach(c => currencies.add(c.currency)); return Array.from(currencies); }, [foreignStocks, foreignCash]);
+            const activeCurrencies = useMemo(() => { const cSet = new Set(['USD']); foreignStocks.forEach(s => cSet.add(s.currency)); foreignCash.forEach(c => cSet.add(c.currency)); return Array.from(cSet); }, [foreignStocks, foreignCash]);
             const displayMoney = (val) => isPrivacyMode ? '****' : formatMoney(val);
             const displayForeign = (val, cur) => isPrivacyMode ? '****' : formatForeign(val, cur);
 
@@ -1221,16 +648,20 @@
                 const lastRecord = history[history.length - 1];
                 const newRecord = { date: today, cashTW: Math.round(totalCashTWD), stockTW: Math.round(totalTwStocksTWD), cashForeign: Math.round(totalForeignCashTWD), stockForeign: Math.round(totalForeignStocksTWD), total: Math.round(totalNetWorth) };
                 
-                if (history.length === 0) { 
-                    setHistory([newRecord]); 
-                } else if (lastRecord.date !== today) { 
-                    setHistory(prev => [...prev, newRecord]); 
-                } else {
-                    setHistory(prev => [...prev.slice(0, -1), newRecord]); 
-                }
+                if (history.length === 0) { setHistory([newRecord]); } 
+                else if (lastRecord.date !== today) { setHistory(prev => [...prev, newRecord]); } 
+                else { setHistory(prev => [...prev.slice(0, -1), newRecord]); }
             }, [totalNetWorth]);
 
-            const ytdStats = useMemo(() => { if (history.length === 0) return { diff: 0, percent: 0 }; const latest = history[history.length - 1]; const currentYear = new Date().getFullYear(); let base = history.find(h => new Date(h.date.replace(/-/g, '/')).getFullYear() === currentYear); if (!base) base = latest; const diff = latest.total - base.total; const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; return { diff, percent }; }, [history]);
+            const ytdStats = useMemo(() => { 
+                if (history.length === 0) return { diff: 0, percent: 0 }; 
+                const latest = history[history.length - 1]; 
+                let base = history.find(h => h.date.startsWith(currentYear.toString())); 
+                if (!base) base = latest; 
+                const diff = latest.total - base.total; 
+                const percent = base.total !== 0 ? (diff / base.total) * 100 : 0; 
+                return { diff, percent }; 
+            }, [history]);
             
             const monthlyReportData = useMemo(() => {
                 const report = {};
@@ -1257,7 +688,7 @@
                 return groups;
             }, [monthlyReportData]);
 
-            // --- STREAMING_CHUNK:Updating the Live Data... ---
+            // --- STREAMING_CHUNK:Real-time Fetching Engine... ---
             const fetchLiveData = async () => {
                 setIsUpdating(true);
                 playSfx('tap');
@@ -1267,25 +698,29 @@
                 let failedCount = 0;
                 
                 try {
-                    setUpdateProgressText('正在獲取最新匯率...');
-                    const apiRates = await fetchExchangeRatesAPI(activeCurrencies);
-                    if (apiRates) {
-                        for (const currency of activeCurrencies) {
-                            if (currency === 'TWD' || !apiRates[currency]) continue;
+                    // 1. 即時匯率更新 (透過 Yahoo Finance API)
+                    for (const currency of activeCurrencies) {
+                        if (currency === 'TWD') continue;
+                        setUpdateProgressText(`匯率更新: ${currency}...`);
+                        const ticker = `${currency}TWD=X`; // Yahoo 外匯代碼
+                        const { price } = await fetchYahooData(ticker);
+                        
+                        if (price) {
                             const oldRate = rates[currency] || 0;
-                            const newRate = apiRates[currency];
-                            if (Math.abs(newRate - oldRate) > 0.001) {
-                                reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${newRate.toFixed(2)}`, diff: newRate - oldRate });
-                                newRates[currency] = newRate;
+                            if (Math.abs(price - oldRate) > 0.0001) {
+                                reportLogs.push({ label: `${currency} 匯率`, value: `${oldRate.toFixed(2)} -> ${price.toFixed(2)}`, diff: price - oldRate });
+                                newRates[currency] = price;
                             } else {
-                                reportLogs.push({ label: `${currency} 匯率`, value: `無變動 (${newRate.toFixed(2)})`, diff: 0 });
+                                reportLogs.push({ label: `${currency} 匯率`, value: `無變動 (${price.toFixed(2)})`, diff: 0 });
                             }
+                        } else {
+                            reportLogs.push({ label: `${currency} 匯率`, value: `未回應 (保留 ${rates[currency]?.toFixed(2) || 0})`, isError: true, diff: 0 });
                         }
-                    } else {
-                        reportLogs.push({ label: '匯率同步', value: 'API 逾時，保留原設定', isError: true });
+                        await delay(100);
                     }
                     setRates(newRates);
 
+                    // 2. 海外股票更新
                     let newForeignStocks = [];
                     for (let i = 0; i < foreignStocks.length; i++) {
                         const s = foreignStocks[i];
@@ -1296,21 +731,18 @@
                         
                         if (price !== null && price !== undefined) {
                             const diff = price - s.price;
-                            reportLogs.push({ 
-                                label: updatedS.name, 
-                                value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, 
-                                diff: diff 
-                            });
+                            reportLogs.push({ label: updatedS.name, value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: diff });
                             updatedS.price = price;
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留原價 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
+                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
                         }
                         newForeignStocks.push(updatedS);
                         await delay(200);
                     }
                     setForeignStocks(newForeignStocks);
 
+                    // 3. 台灣股票更新
                     let newTwStocks = [];
                     for (let i = 0; i < twStocks.length; i++) {
                         const s = twStocks[i];
@@ -1321,15 +753,11 @@
                         
                         if (price !== null && price !== undefined) {
                             const diff = price - s.price;
-                            reportLogs.push({ 
-                                label: updatedS.name, 
-                                value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, 
-                                diff: diff 
-                            });
+                            reportLogs.push({ label: updatedS.name, value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${s.price.toFixed(2)} -> ${price.toFixed(2)}`, diff: diff });
                             updatedS.price = price;
                         } else {
                             failedCount++;
-                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留原價 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
+                            reportLogs.push({ label: updatedS.name, value: `未回應 (保留 ${s.price.toFixed(2)})`, isError: true, diff: 0 });
                         }
                         newTwStocks.push(updatedS);
                         await delay(200);
@@ -1350,52 +778,63 @@
                     setLastUpdate(new Date().toLocaleTimeString());
                     setUpdateResults(reportLogs);
                     
-                    if (failedCount > 0) {
-                        triggerToast(`同步完成（${failedCount} 檔未獲取到報價）`);
-                    } else {
-                        triggerToast('即時報價更新完成');
-                        playSfx('success');
-                    }
+                    if (failedCount > 0) { triggerToast(`同步完成（${failedCount} 檔未獲取到報價）`); } 
+                    else { triggerToast('即時報價更新完成'); playSfx('success'); }
                 } catch (error) {
-                    console.error("Critical update error", error);
                     triggerToast('更新過程出現異常中斷');
                 } finally {
                     setIsUpdating(false);
                     setUpdateProgressText('');
                 }
             };
-
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v24.3_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
-            const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); showConfirm('還原資料', '確定要使用此備份檔案覆蓋所有資料嗎？', () => { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); triggerToast('資料還原成功'); setShowSettings(false); }); } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
             const openEditItem = (itemData) => { playSfx('pop'); setEditItem(itemData); };
-            const performDelete = (id, type) => { if (!id) return; if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); setEditItem(null); playSfx('delete'); triggerToast('刪除成功'); };
             
-            const openAddItem = (type) => { playSfx('pop'); setAddItemType(type); setAddForm({ main: '', sub: '', val: 0, cur: 'USD', note: '' }); };
+            // --- STREAMING_CHUNK:Goal Cleanup on Delete... ---
+            const performDelete = (id, type) => { 
+                if (!id) return; 
+                if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); 
+                else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); 
+                else if(type==='stockForeign') setForeignStocks(p=>p.filter(i=>i.id!==id)); 
+                else if(type==='cashForeign') setForeignCash(p=>p.filter(i=>i.id!==id)); 
+
+                // 清除目標中對應的已刪除帳戶ID
+                setGoals(prev => prev.map(g => ({
+                    ...g,
+                    linkedAccounts: g.linkedAccounts ? g.linkedAccounts.filter(link => link !== id) : []
+                })));
+
+                setEditItem(null); 
+                playSfx('delete'); 
+                triggerToast('刪除成功'); 
+            };
+            
+            const openAddItem = (type) => { playSfx('pop'); setAddItemType(type); setAddForm({ main: '', sub: '', val: 0, cur: 'USD', note: '' }); setSearchQuery(''); setSearchResults([]); setHasSearched(false); };
             const handleAddFormChange = (field, value) => { setAddForm(prev => ({ ...prev, [field]: value })); };
 
             const handleAddItemSubmit = async () => {
-                const { main, sub, val, cur, note } = addForm;
                 const type = addItemType;
-                if (!main || val === null) return;
+                // 如果是股票，但使用者沒有點擊選項，則以 searchQuery 為主 (彈性輸入)
+                const finalMain = type.includes('stock') ? (addForm.main || searchQuery) : addForm.main;
+                const { sub, val, cur, note } = addForm;
+                
+                if (!finalMain || val === null) return;
                 playSfx('tap');
 
                 const id = Math.random().toString(36).substr(2,9); 
                 if (type === 'cash') { 
-                    setCash([...cash, { id, name: main, balance: val || 0, note: note, locked: false }]); 
-                    setAddItemType(null); 
+                    setCash([...cash, { id, name: finalMain, balance: val || 0, note: note, locked: false }]); 
                 } else if (type === 'cashForeign') { 
-                    setForeignCash([...foreignCash, { id, name: main, balance: val || 0, currency: cur || 'USD', note: note }]); 
-                    setAddItemType(null); 
+                    setForeignCash([...foreignCash, { id, name: finalMain, balance: val || 0, currency: cur || 'USD', note: note }]); 
                 } else { 
-                    let ticker = main.toUpperCase(); 
-                    if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW'; 
+                    let ticker = finalMain.toUpperCase(); 
+                    if (type === 'stockTW' && !ticker.includes('.')) ticker += '.TW'; // 容錯預設，雖然現在有搜尋功能了
                     const name = sub || ticker; 
                     const shares = val || 0; 
                     const currency = cur || (type === 'stockTW' ? 'TWD' : 'USD'); 
                     const newItem = { id, ticker, name, shares, price: 0, currency, note }; 
                     if (type === 'stockTW') setTwStocks(prev => [...prev, newItem]); else setForeignStocks(prev => [...prev, newItem]); 
-                    setAddItemType(null); 
+                    
                     if (!sub) { 
                         try { 
                             const { price, name: fetchedName } = await fetchYahooData(ticker); 
@@ -1404,6 +843,7 @@
                         } catch (e) {} 
                     } 
                 } 
+                setAddItemType(null); 
                 playSfx('success'); 
                 triggerToast('新增成功'); 
             };
@@ -1424,47 +864,13 @@
                 triggerToast('更新成功'); 
             };
 
-            const toggleSop = (id) => { playSfx('tap'); setSopList(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s)); };
-            const deleteSop = (id) => { playSfx('delete'); setSopList(p => p.filter(s => s.id !== id)); };
-            const addSop = () => { playSfx('pop'); setSopTaskInput({ id: null, text: '' }); };
-            const editSopText = (id, text) => { playSfx('pop'); setSopTaskInput({ id, text }); };
-            const handleSaveSopTask = (text) => { if (text.trim() === '') return; if (sopTaskInput.id) { setSopList(prev => prev.map(s => s.id === sopTaskInput.id ? { ...s, text } : s)); triggerToast('任務已更新'); } else { setSopList([...sopList, { id: Date.now(), text, completed: false }]); triggerToast('任務已新增'); } setSopTaskInput(null); playSfx('success'); };
-            
-            const handleAddGoal = (title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals([...goals, { id: Date.now(), title, target: parseFloat(target), linkedAccounts: linkedAccounts || ['total_assets'], deadline: deadline || null }]); 
-            };
-            
-            const handleUpdateGoal = (id, title, target, linkedAccounts, deadline) => { 
-                playSfx('success'); 
-                setGoals(prev => prev.map(g => g.id === id ? { ...g, title, target: parseFloat(target), linkedAccounts: linkedAccounts || ['total_assets'], deadline: deadline || null } : g)); 
-                setEditGoal(null); 
-            };
-
-            const handleDeleteGoal = (id) => { showConfirm('刪除目標', '確定要刪除此財務目標嗎？', () => setGoals(prev => prev.filter(g => g.id !== id)), true); };
-            
             const moveSection = (index, direction) => { 
                 playSfx('tap'); 
                 const newOrder = [...walletOrder]; 
                 let swapIdx = -1;
                 if (direction === 'up' && index > 0) swapIdx = index - 1;
                 else if (direction === 'down' && index < newOrder.length - 1) swapIdx = index + 1;
-                if (swapIdx !== -1) {
-                    [newOrder[index], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[index]];
-                    if (document.startViewTransition) { document.startViewTransition(() => setWalletOrder(newOrder)); } else { setWalletOrder(newOrder); }
-                }
-            };
-
-            const moveGoal = (index, direction) => {
-                playSfx('tap');
-                const newGoals = [...goals];
-                let swapIdx = -1;
-                if (direction === 'up' && index > 0) swapIdx = index - 1;
-                else if (direction === 'down' && index < newGoals.length - 1) swapIdx = index + 1;
-                if (swapIdx !== -1) {
-                    [newGoals[index], newGoals[swapIdx]] = [newGoals[swapIdx], newGoals[index]];
-                    if (document.startViewTransition) { document.startViewTransition(() => setGoals(newGoals)); } else { setGoals(newGoals); }
-                }
+                if (swapIdx !== -1) { [newOrder[index], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[index]]; setWalletOrder(newOrder); }
             };
 
             const TabButton = ({ id, label, icon }) => ( <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}><Icon name={icon} className="w-5 h-5 mb-1" />{label}</button> );
@@ -1475,6 +881,7 @@
                     return (
                         <div key="cashTW" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-emerald-400 flex items-center"><Icon name="wallet" className="w-4 h-4 mr-2" /> 台幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalCashTWD)}</span><div id="wallet-reorder-btns-cashTW" className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button id="wallet-add-cash" onClick={() => openAddItem('cash')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                            {cash.length === 0 && <div className="text-slate-500 text-xs text-center py-4">點擊右上方 + 新增帳戶</div>}
                             {cash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cash', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div><div className="text-sm text-slate-200 truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.note || (item.locked ? '🔒 封存' : '🟢 活存')}</div></div><div className="text-sm font-mono text-emerald-400 truncate">{displayMoney(item.balance)}</div></div>))}
                         </div>
                     );
@@ -1483,6 +890,7 @@
                     return (
                         <div key="cashForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('cashForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                            {foreignCash.length === 0 && <div className="text-slate-500 text-xs text-center py-4">點擊右上方 + 新增外幣帳戶</div>}
                             {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="flex items-center gap-2 overflow-hidden"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30 flex-shrink-0">{item.currency}</div><div className="overflow-hidden"><div className="text-sm text-slate-200 truncate">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500 truncate">{item.note}</div>}</div></div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500 truncate">{displayForeign(item.balance, item.currency)}</div></div></div>))}
                         </div>
                     );
@@ -1491,6 +899,7 @@
                     return (
                         <div key="stockForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                            {foreignStocks.length === 0 && <div className="text-slate-500 text-xs text-center py-4">點擊右上方 + 新增海外標的</div>}
                             {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div><div className="flex items-center gap-2 mb-0.5 overflow-hidden"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30 flex-shrink-0">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[130px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10 truncate">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10 truncate">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono truncate">{displayForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayForeign(item.price, item.currency)}</div></div></div>))}
                         </div>
                     );
@@ -1499,6 +908,7 @@
                     return (
                         <div key="stockTW" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><Icon name="trending-up" className="w-4 h-4 mr-2" /> 台股現貨</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalTwStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
+                            {twStocks.length === 0 && <div className="text-slate-500 text-xs text-center py-4">點擊右上方 + 新增台股標的</div>}
                             {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="overflow-hidden"><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono truncate">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayMoney(item.price)}</div></div></div>))}
                         </div>
                     );
@@ -1514,10 +924,8 @@
                                 <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => { playSfx('pop'); setShowShareModal(true); }} className="text-slate-400 hover:text-white transition-colors" title="分享戰報"><Icon name="camera" className="w-4 h-4 text-blue-400" /></button>
                                 <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}><Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" /></button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
-                                <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
                             </div>
                         </div>
                         <div className="flex justify-between items-end">
@@ -1537,7 +945,7 @@
                     </header>
 
                     <div id="ticker-rates" className="px-6 pt-2 pb-0 flex overflow-x-auto no-scrollbar gap-2">
-                        {Object.entries(rates).filter(([cur]) => activeCurrencies.includes(cur)).map(([cur, rate]) => (
+                        {Object.entries(rates).filter(([cur]) => activeCurrencies.includes(cur) && cur !== 'TWD').map(([cur, rate]) => (
                             <div key={cur} className="bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/50 flex items-center gap-2 whitespace-nowrap">
                                 <span className="text-[10px] text-slate-400 uppercase tracking-wider">{cur}</span>
                                 <span className="text-xs font-bold text-emerald-400 font-mono">{rate.toFixed(2)}</span>
@@ -1552,9 +960,8 @@
                                     <h3 className="text-xs text-slate-400 font-bold uppercase">資產趨勢</h3>
                                     <div id="chart-controls" className="flex bg-slate-800 rounded-lg p-0.5">
                                         {['日', '月', '年'].map(r => (
-                                            <button key={r} onClick={() => { playSfx('tap'); setTimeRange(r); setCustomDates({start:'', end:''}); }} className={`px-4 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r}</button>
+                                            <button key={r} onClick={() => { playSfx('tap'); setTimeRange(r); }} className={`px-4 py-0.5 text-[10px] rounded ${timeRange === r ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>{r}</button>
                                         ))}
-                                        <button onClick={() => { playSfx('pop'); setShowDateModal(true); }} className={`px-2 py-0.5 text-[10px] rounded flex items-center justify-center ${timeRange === 'CUSTOM' ? 'bg-purple-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}><Icon name="calendar" className="w-3 h-3" /></button>
                                     </div>
                                 </div>
                                 <div className="flex space-x-4 mb-4 overflow-x-auto pb-1 no-scrollbar">
@@ -1562,21 +969,11 @@
                                         <button key={m.id} onClick={() => { playSfx('tap'); setTrendMode(m.id); }} className={`text-xs font-bold whitespace-nowrap pb-1 border-b-2 transition-colors ${trendMode === m.id ? 'border-blue-500 text-white' : 'border-transparent text-slate-500'}`}>{m.l}</button>
                                     ))}
                                 </div>
-                                <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} customDates={customDates} isPrivacyMode={isPrivacyMode} />
+                                <AssetTrendChart history={history} timeRange={timeRange} mode={trendMode} isPrivacyMode={isPrivacyMode} />
                             </div>
                             <div id="allocation-section" className="glass-panel rounded-xl p-4">
                                 <h3 className="text-xs text-slate-400 font-bold uppercase mb-4">資產配置</h3>
                                 <AllocationBar cash={totalCashTWD} tw={totalTwStocksTWD} us={totalForeignAssetsTWD} total={totalNetWorth} isPrivacyMode={isPrivacyMode} playSfx={playSfx} />
-                            </div>
-                            <div id="sop-section" className="glass-panel rounded-xl p-4">
-                                <div className="flex justify-between items-center mb-3">
-                                    <div className="flex items-center gap-2"><h3 className="text-xs text-slate-400 uppercase tracking-wider font-bold">每月任務</h3><button onClick={() => { playSfx('pop'); setShowSopModal(true); }} className="text-slate-500 hover:text-yellow-400"><Icon name="lightbulb" className="w-4 h-4" /></button></div>
-                                    <button onClick={() => { playSfx('tap'); setSopEditMode(!sopEditMode); }} className="text-xs text-blue-400">{sopEditMode ? '完成' : '編輯'}</button>
-                                </div>
-                                <div className="space-y-2">
-                                    {sopList.length > 0 ? sopList.map(sop => (<div key={sop.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-slate-700/50"><div className="flex items-center text-sm text-slate-300 flex-1 cursor-pointer" onClick={() => !sopEditMode && toggleSop(sop.id)}><div className={`w-5 h-5 rounded border mr-3 flex items-center justify-center transition-colors flex-shrink-0 ${sop.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>{sop.completed && (<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>)}</div><span className={`${sop.completed ? 'line-through text-slate-600' : ''} ${sopEditMode ? 'underline decoration-dashed decoration-slate-600' : ''}`} onClick={(e) => { if (sopEditMode) { e.stopPropagation(); editSopText(sop.id, sop.text); }}}>{sop.text}</span></div>{sopEditMode && <button onClick={() => deleteSop(sop.id)} className="ml-2 text-red-500 flex-shrink-0"><Icon name="trash-2" className="w-4 h-4" /></button>}</div>)) : <div className="text-xs text-slate-500 text-center py-2">無待辦事項</div>}
-                                    {sopEditMode && <button onClick={addSop} className="w-full py-2 text-xs border border-dashed border-slate-600 text-slate-500 rounded hover:border-slate-400 hover:text-slate-400">+ 新增任務</button>}
-                                </div>
                             </div>
                         </div>
                     )}
@@ -1588,7 +985,6 @@
                         </div>
                     )}
 
-                    {/* --- STREAMING_CHUNK:Analysis Tab with Collapsible Reports... --- */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1598,7 +994,7 @@
                                 </div>
                                 <div className="space-y-3">
                                     {goals.map((g, index) => (
-                                        <CircularGoal key={g.id} goal={g} index={index} totalGoals={goals.length} current={totalNetWorth} target={g.target} onEdit={() => { playSfx('pop'); setEditGoal(g); }} onDelete={() => handleDeleteGoal(g.id)} onMove={moveGoal} isPrivacyMode={isPrivacyMode} rates={rates} cash={cash} twStocks={twStocks} foreignStocks={foreignStocks} foreignCash={foreignCash} />
+                                        <CircularGoal key={g.id} goal={g} index={index} totalGoals={goals.length} current={totalNetWorth} target={g.target} onEdit={() => { playSfx('pop'); setEditGoal(g); }} onDelete={() => showConfirm('刪除目標', '確定要刪除此財務目標嗎？', () => setGoals(prev => prev.filter(x => x.id !== g.id)), true)} onMove={(idx, dir) => { const n = [...goals]; const s = dir==='up'?idx-1:idx+1; [n[idx], n[s]] = [n[s], n[idx]]; setGoals(n); }} isPrivacyMode={isPrivacyMode} rates={rates} cash={cash} twStocks={twStocks} foreignStocks={foreignStocks} foreignCash={foreignCash} />
                                     ))}
                                     {goals.length === 0 && <div className="text-slate-500 text-xs text-center py-4">尚未設定目標，開始規劃您的夢想吧！</div>}
                                 </div>
@@ -1619,17 +1015,9 @@
                                         return (
                                             <div key={year} className="glass-panel rounded-xl overflow-hidden border border-slate-700">
                                                 <div onClick={() => { playSfx('tap'); setExpandedYears(prev => ({...prev, [year]: !prev[year]})); }} className="p-4 bg-slate-800/80 flex justify-between items-center cursor-pointer hover:bg-slate-800">
-                                                    <div className="flex items-center gap-2">
-                                                        <Icon name={isYearOpen ? "chevron-down" : "chevron-right"} className="w-4 h-4 text-blue-400" />
-                                                        <span className="text-sm font-bold text-white">{year} 年度總結</span>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <span className={`text-xs font-mono font-bold ${yData.totalDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                            {isPrivacyMode ? '****' : `${yData.totalDiff >= 0 ? '+' : ''}${formatMoney(yData.totalDiff)}`}
-                                                        </span>
-                                                    </div>
+                                                    <div className="flex items-center gap-2"><Icon name={isYearOpen ? "chevron-down" : "chevron-right"} className="w-4 h-4 text-blue-400" /><span className="text-sm font-bold text-white">{year} 年度總結</span></div>
+                                                    <div className="text-right"><span className={`text-xs font-mono font-bold ${yData.totalDiff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{isPrivacyMode ? '****' : `${yData.totalDiff >= 0 ? '+' : ''}${formatMoney(yData.totalDiff)}`}</span></div>
                                                 </div>
-
                                                 {isYearOpen && (
                                                     <div className="p-3 space-y-2 bg-slate-900/30 border-t border-slate-800">
                                                         {yData.months.map(({ report, index: idx }) => {
@@ -1638,40 +1026,18 @@
                                                             const diffPercent = prevMonth && prevMonth.total !== 0 ? (diff / prevMonth.total * 100) : 0;
                                                             const monthKey = report.date;
                                                             const isMonthOpen = expandedMonths[monthKey];
-
                                                             return (
                                                                 <div key={monthKey} className="bg-slate-900/70 rounded-lg border border-slate-800 overflow-hidden">
                                                                     <div onClick={() => { playSfx('tap'); setExpandedMonths(prev => ({...prev, [monthKey]: !prev[monthKey]})); }} className="p-3 flex justify-between items-center cursor-pointer hover:bg-white/5">
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Icon name={isMonthOpen ? "chevron-down" : "chevron-right"} className="w-3 h-3 text-slate-400" />
-                                                                            <span className="text-xs text-slate-300 font-bold">{report.date.substring(0, 7)} 結算</span>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <div className="text-xs font-mono text-white">{displayMoney(report.total)}</div>
-                                                                            <div className={`text-[10px] ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                                                {isPrivacyMode ? '****' : `${diff >= 0 ? '+' : ''}${formatMoney(diff)} (${isPrivacyMode ? '**.*%' : (diff >= 0 ? '+' : '') + diffPercent.toFixed(1) + '%'})`}
-                                                                            </div>
-                                                                        </div>
+                                                                        <div className="flex items-center gap-2"><Icon name={isMonthOpen ? "chevron-down" : "chevron-right"} className="w-3 h-3 text-slate-400" /><span className="text-xs text-slate-300 font-bold">{report.date.substring(0, 7)} 結算</span></div>
+                                                                        <div className="text-right"><div className="text-xs font-mono text-white">{displayMoney(report.total)}</div><div className={`text-[10px] ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{isPrivacyMode ? '****' : `${diff >= 0 ? '+' : ''}${formatMoney(diff)} (${diff >= 0 ? '+' : ''}${diffPercent.toFixed(1)}%)`}</div></div>
                                                                     </div>
-
                                                                     {isMonthOpen && (
                                                                         <div className="px-3 pb-3 pt-1 border-t border-slate-800/60 bg-slate-950/40 grid grid-cols-2 gap-2 text-[11px]">
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">台幣現金</div>
-                                                                                <div className="font-mono text-emerald-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashTW || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">台股部位</div>
-                                                                                <div className="font-mono text-sky-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockTW || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">外幣現金</div>
-                                                                                <div className="font-mono text-purple-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashForeign || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">海外投資</div>
-                                                                                <div className="font-mono text-pink-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockForeign || 0)}</div>
-                                                                            </div>
+                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800"><div className="text-slate-400 mb-0.5">台幣現金</div><div className="font-mono text-emerald-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashTW || 0)}</div></div>
+                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800"><div className="text-slate-400 mb-0.5">台股部位</div><div className="font-mono text-sky-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockTW || 0)}</div></div>
+                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800"><div className="text-slate-400 mb-0.5">外幣現金</div><div className="font-mono text-purple-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashForeign || 0)}</div></div>
+                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800"><div className="text-slate-400 mb-0.5">海外投資</div><div className="font-mono text-pink-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockForeign || 0)}</div></div>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -1693,92 +1059,74 @@
                         <TabButton id="analysis" label="分析" icon="pie-chart" />
                     </nav>
 
-                    <ConfirmModal 
-                        isOpen={confirmDialog.isOpen} 
-                        title={confirmDialog.title} 
-                        message={confirmDialog.message} 
-                        isDanger={confirmDialog.isDanger}
-                        onConfirm={confirmDialog.onConfirm} 
-                        onCancel={() => { playSfx('pop'); setConfirmDialog({ ...confirmDialog, isOpen: false }); }} 
-                    />
-
+                    <ConfirmModal isOpen={confirmDialog.isOpen} title={confirmDialog.title} message={confirmDialog.message} isDanger={confirmDialog.isDanger} onConfirm={confirmDialog.onConfirm} onCancel={() => { playSfx('pop'); setConfirmDialog({ ...confirmDialog, isOpen: false }); }} />
                     <Toast message={toast.message} show={toast.show} />
-                    <UpdateNotification show={!!updateAvailable} newVersion={updateAvailable} onUpdate={() => window.location.reload()} />
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
                     {showTutorial && <TutorialSpotlight stepIndex={tutorialStep} totalSteps={TUTORIAL_STEPS.length} onNext={handleTutorialNext} onPrev={handleTutorialPrev} onClose={handleTutorialClose} />}
-                    
-                    {/* Render Share Modal V24.3 */}
-                    {showShareModal && (
-                        <ShareModal 
-                            onClose={() => { playSfx('pop'); setShowShareModal(false); }} 
-                            userName={userName}
-                            totalNetWorth={totalNetWorth}
-                            ytdStats={ytdStats}
-                            cash={totalCashTWD}
-                            tw={totalTwStocksTWD}
-                            us={totalForeignAssetsTWD}
-                            isPrivacyMode={isPrivacyMode}
-                            playSfx={playSfx}
-                            goals={goals}
-                            history={history}
-                        />
-                    )}
 
-                    {sopTaskInput && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => setSopTaskInput(null)}>
-                            <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center">{sopTaskInput.id ? '編輯任務' : '新增任務'}</h3><button onClick={() => setSopTaskInput(null)} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
-                                <div className="space-y-4 mb-6"><input id="sopTaskInput" type="text" defaultValue={sopTaskInput.text} autoFocus className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none text-base" placeholder="輸入任務內容..." onKeyDown={(e) => { if (e.key === 'Enter') { handleSaveSopTask(e.target.value); } }} /></div>
-                                <button onClick={() => handleSaveSopTask(document.getElementById('sopTaskInput').value)} className="w-full py-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg">確認</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {editGoal && (
-                        <GoalInputModal headerTitle={editGoal.id ? '編輯目標' : '新增目標'} defaultTitle={editGoal.title} defaultTarget={editGoal.target} deadline={editGoal.deadline} linkedAccounts={editGoal.linkedAccounts} cash={cash} twStocks={twStocks} foreignStocks={foreignStocks} foreignCash={foreignCash} onConfirm={(t, v, l, d) => { if (editGoal.id) handleUpdateGoal(editGoal.id, t, v, l, d); else { handleAddGoal(t, v, l, d); setEditGoal(null); } }} onClose={() => { playSfx('pop'); setEditGoal(null); }} playSfx={playSfx} />
-                    )}
-
-                    {updateResults && <UpdateResultModal results={updateResults} onClose={() => setUpdateResults(null)} isPrivacyMode={isPrivacyMode} />}
-                    
-                    {showSettings && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-6 animate-fade-in" onClick={() => { playSfx('pop'); setShowSettings(false); }}>
-                            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl relative" onClick={e => e.stopPropagation()}>
-                                <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="settings" className="w-5 h-5 mr-2" /> 設定</h3><button onClick={() => { playSfx('pop'); setShowSettings(false); }} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
-                                <div className="space-y-4 overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar">
-                                    <div className="mt-4 mb-2"><label className="block text-xs text-slate-400 mb-2">使用者名稱</label><div className="flex gap-2"><input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg p-3 w-full text-white focus:border-blue-500 outline-none placeholder-slate-600" placeholder="請輸入您的暱稱" /><button onClick={() => { playSfx('success'); triggerToast('使用者名稱已更新'); setShowSettings(false); }} className="bg-blue-600 hover:bg-blue-500 text-white px-4 rounded-lg font-bold text-sm whitespace-nowrap transition-colors">儲存</button></div></div>
-                                    <div className="mt-4 mb-2">
-                                        <label className="block text-xs text-slate-400 mb-2">系統設定</label>
-                                        <div onClick={() => { const newState = !soundEnabled; setSoundEnabled(newState); if (newState) { SoundEngine.init(); SoundEngine.play('switch'); } }} className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${soundEnabled ? 'bg-blue-500/10 border-blue-500/50' : 'bg-slate-800 border-slate-600 hover:border-slate-500'}`}>
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${soundEnabled ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'}`}><Icon name={soundEnabled ? "volume-2" : "volume-x"} className="w-4 h-4" /></div>
-                                                <div className="flex flex-col"><span className={`text-xs font-bold ${soundEnabled ? 'text-blue-100' : 'text-slate-300'}`}>音效回饋</span><span className="text-[10px] text-slate-500">{soundEnabled ? '系統音效已開啟' : '靜音模式'}</span></div>
-                                            </div>
-                                            <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${soundEnabled ? 'bg-blue-500' : 'bg-slate-600'}`}><div className={`absolute top-1 w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-300 ${soundEnabled ? 'translate-x-6' : 'translate-x-1'}`}></div></div>
+                    {updateResults && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[200] p-6 animate-fade-in" onClick={() => setUpdateResults(null)}>
+                            <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl relative safe-area-bottom" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center"><Icon name="activity" className="w-5 h-5 mr-2 text-emerald-400" /> 更新報告</h3><button onClick={() => setUpdateResults(null)} className="text-slate-400"><Icon name="x" className="w-5 h-5" /></button></div>
+                                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                    {updateResults.length === 0 ? <p className="text-slate-400 text-center text-sm">數據無變動</p> : updateResults.map((item, idx) => (
+                                        <div key={idx} className="bg-slate-900/50 p-3 rounded-lg flex justify-between items-center text-xs">
+                                            <span className="text-slate-300 font-mono max-w-[120px] truncate" title={item.label}>{item.label}</span>
+                                            <span className={`font-mono text-right ${item.diff > 0 ? 'text-emerald-400' : item.diff < 0 ? 'text-red-400' : item.isError ? 'text-amber-400' : 'text-slate-400'}`}>
+                                                {isPrivacyMode && item.label.includes('變動') ? '****' : item.value}
+                                            </span>
                                         </div>
-                                    </div>
-                                    <div className="pt-2 border-t border-slate-700"><label className="block text-xs text-slate-400 mb-2">資料備份/還原</label><div className="flex gap-2"><button onClick={exportData} className="flex-1 py-2 rounded bg-blue-600/20 text-blue-400 text-xs border border-blue-600/50">匯出 (Backup)</button><label className="flex-1 py-2 rounded bg-emerald-600/20 text-emerald-400 text-xs border border-emerald-600/50 text-center cursor-pointer">匯入 (Restore)<input type="file" className="hidden" onChange={importData} accept=".json" /></label></div></div>
-                                    <div className="pt-2 border-t border-slate-700 mt-2">
-                                        <label className="block text-xs text-red-400 mb-2">危險區域</label>
-                                        <button onClick={() => { showConfirm('重置系統', '警告：此操作將清除所有資料並重置系統！此動作無法復原。確定要繼續嗎？', () => { localStorage.clear(); window.location.reload(); }, true); }} className="w-full py-3 rounded bg-red-500/10 text-red-500 text-xs border border-red-500/50 hover:bg-red-500/20 transition-colors flex items-center justify-center gap-2"><Icon name="alert-triangle" className="w-3 h-3" /> 重置系統資料</button>
-                                    </div>
-                                    <div className="pt-2 border-t border-slate-700"><button onClick={replayTutorial} className="w-full py-2 text-xs text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors flex items-center justify-center gap-2"><Icon name="help-circle" className="w-3 h-3" /> 重播新手教學導覽</button></div>
+                                    ))}
                                 </div>
-                                <div className="text-center mt-6 pt-4 border-t border-slate-700/50"><div className="text-[10px] text-slate-600 font-mono tracking-widest">v{APP_VERSION}</div><div className="text-[10px] text-slate-600 mt-1">Designed by <span className="text-slate-500 font-bold hover:text-blue-400 transition-colors cursor-default">YAMANEMU Studio</span></div></div>
+                                <button onClick={() => setUpdateResults(null)} className="w-full mt-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm">關閉</button>
                             </div>
                         </div>
                     )}
                     
-                    {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
-                    <div className="space-y-4 mb-6">
-                        {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
-                            <div><label className="text-xs text-slate-400 mb-1 block">幣別</label><select value={addForm.cur} onChange={e => handleAddFormChange('cur', e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none">{CURRENCY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.code} - {c.name}</option>)}</select></div>
-                        )}
-                        <div><label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '帳戶名稱' : '股票代號 (例: 7203.T)'}</label><input value={addForm.main} onChange={e => handleAddFormChange('main', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
-                        {addItemType.includes('stock') && (<div><label className="text-xs text-slate-400 mb-1 block">股票名稱 (選填)</label><input value={addForm.sub} onChange={e => handleAddFormChange('sub', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>)}
-                        <div><label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '初始金額 (計算機)' : '持有股數 (計算機)'}</label><Calculator initialValue={0} onValueChange={(val) => handleAddFormChange('val', val)} showConfirmBtn={false} playSfx={playSfx} /></div>
-                        <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input value={addForm.note} onChange={e => handleAddFormChange('note', e.target.value)} type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
-                    </div>
-                    <button onClick={handleAddItemSubmit} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button></div></div>)}
+                    {/* --- STREAMING_CHUNK:Add Item Modal (With Search)... --- */}
+                    {addItemType && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}>
+                            <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
+                                <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
+                                <div className="space-y-4 mb-6">
+                                    {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
+                                        <div><label className="text-xs text-slate-400 mb-1 block">幣別</label><select value={addForm.cur} onChange={e => handleAddFormChange('cur', e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none">{CURRENCY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.code} - {c.name}</option>)}</select></div>
+                                    )}
+                                    
+                                    {addItemType.includes('stock') ? (
+                                        <div className="relative">
+                                            <label className="text-xs text-slate-400 mb-1 block">股票搜尋 (輸入代號或名稱)</label>
+                                            <div className="relative">
+                                                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} type="text" placeholder="例如: AAPL 或 台積電" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" />
+                                                {isSearching && <Icon name="loader" className="w-4 h-4 absolute right-3 top-3.5 text-slate-400 animate-spin" />}
+                                            </div>
+                                            {searchQuery.trim().length > 1 && (
+                                                <div className="absolute z-[200] w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto custom-scrollbar">
+                                                    {searchResults.length > 0 ? (
+                                                        searchResults.map((res, i) => (
+                                                            <div key={i} onClick={() => { handleAddFormChange('main', res.symbol); handleAddFormChange('sub', res.shortname || res.longname); setSearchQuery(res.symbol); setSearchResults([]); setHasSearched(false); }} className="p-3 border-b border-slate-700 hover:bg-slate-700 cursor-pointer">
+                                                                <div className="text-sm font-bold text-white flex justify-between"><span>{res.symbol}</span><span className="text-[10px] text-slate-400 font-normal px-2 py-0.5 bg-slate-900 rounded">{res.exchDisp}</span></div>
+                                                                <div className="text-xs text-slate-400 truncate">{res.shortname || res.longname}</div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        !isSearching && hasSearched && <div className="p-4 text-center text-xs text-slate-400">找不到符合的股票，請確認關鍵字</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div><label className="text-xs text-slate-400 mb-1 block">帳戶名稱</label><input value={addForm.main} onChange={e => handleAddFormChange('main', e.target.value)} type="text" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
+                                    )}
+
+                                    {addItemType.includes('stock') && (<div><label className="text-xs text-slate-400 mb-1 block">自訂顯示名稱 (選填)</label><input value={addForm.sub} onChange={e => handleAddFormChange('sub', e.target.value)} type="text" placeholder="若留空將自動帶入" className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>)}
+                                    <div><label className="text-xs text-slate-400 mb-1 block">{addItemType.includes('cash') ? '初始金額 (計算機)' : '持有股數 (計算機)'}</label><Calculator initialValue={0} onValueChange={(val) => handleAddFormChange('val', val)} showConfirmBtn={false} playSfx={playSfx} /></div>
+                                    <div><label className="text-xs text-slate-400 mb-1 block">備註 (選填)</label><input value={addForm.note} onChange={e => handleAddFormChange('note', e.target.value)} type="text" placeholder={addItemType === 'cash' ? "例如: 活存" : ""} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-white focus:border-blue-500 outline-none" /></div>
+                                </div>
+                                <button onClick={handleAddItemSubmit} className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-lg">確認新增</button>
+                            </div>
+                        </div>
+                    )}
                     
                     {editItem && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setEditItem(null); }}>
@@ -1786,7 +1134,7 @@
                                 <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額與資訊' : '更新股數與資訊'}</h3><button onClick={() => { playSfx('pop'); setEditItem(null); }} className="text-slate-400"><Icon name="x" className="w-6 h-6" /></button></div>
                                 <div className="space-y-3 mb-4"><input type="text" id="editName" defaultValue={editItem.data.name} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="名稱"/><input type="text" id="editNote" defaultValue={editItem.data.note} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 outline-none" placeholder="備註 (例: 活存)"/></div>
                                 <Calculator initialValue={editItem.type.includes('cash') ? editItem.data.balance : editItem.data.shares} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} playSfx={playSfx} />
-                                <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end"><button onClick={(e) => { e.stopPropagation(); showConfirm('刪除確認', '確定要刪除此帳戶/部位嗎？此操作無法復原。', () => performDelete(editItem.data.id, editItem.type), true); }} className="py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all bg-red-500/10 text-red-500 hover:bg-red-500/20 w-full justify-center"><Icon name="trash-2" className="w-4 h-4 mr-2" />刪除帳戶</button></div>
+                                <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end"><button onClick={(e) => { e.stopPropagation(); showConfirm('刪除確認', '確定要刪除此項目嗎？', () => performDelete(editItem.data.id, editItem.type), true); }} className="py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all bg-red-500/10 text-red-500 hover:bg-red-500/20 w-full justify-center"><Icon name="trash-2" className="w-4 h-4 mr-2" />刪除帳戶</button></div>
                             </div>
                         </div>
                     )}
