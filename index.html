@@ -49,7 +49,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        //        const APP_VERSION = '24.11.0';
+        const APP_VERSION = '24.11.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -100,7 +100,7 @@
 
         const generateCorrectedHistory = () => [];
 
-        //        const SoundEngine = {
+        const SoundEngine = {
             ctx: null,
             init: () => {
                 if (!SoundEngine.ctx) { SoundEngine.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -142,7 +142,7 @@
             { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
         ];
 
-        //        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
+        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
         
         const Toast = ({ message, show }) => (
             <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
@@ -638,7 +638,7 @@
             }
         };
 
-        //        const fetchYahooData = async (ticker) => { 
+        const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
             
             const endpoints = [
@@ -672,7 +672,6 @@
             return { price: null, name: null };
         };
 
-        // Dual-Layer Smart Autocomplete Search
         const fetchYahooSearch = async (query) => {
             let results = [];
             try {
@@ -699,7 +698,7 @@
         };
 
         const App = () => {
-            //            const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
+            const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
             const [foreignStocks, setForeignStocks] = useState(() => { const saved = localStorage.getItem('ap_foreign_stocks'); if (saved) return JSON.parse(saved); const oldUs = localStorage.getItem('ap_us_stocks'); if (oldUs) { const parsed = JSON.parse(oldUs); return parsed.map(s => ({ ...s, currency: 'USD' })); } return INITIAL_FOREIGN_CASH; });
             const [foreignCash, setForeignCash] = useState(() => { const saved = localStorage.getItem('ap_foreign_cash_list'); if (saved) return JSON.parse(saved); const oldUsCash = localStorage.getItem('ap_us_cash'); if (oldUsCash && parseFloat(oldUsCash) > 0) { return [{ id: 'migrated_usd', name: 'Firstrade 餘額', balance: parseFloat(oldUsCash), currency: 'USD' }]; } return INITIAL_FOREIGN_CASH; });
@@ -751,7 +750,7 @@
             
             const currentYear = new Date().getFullYear();
 
-            //            useEffect(() => {
+            useEffect(() => {
                 const checkUpdate = async () => {
                     try {
                         const response = await fetch(window.location.href, { cache: "no-store" });
@@ -793,7 +792,7 @@
             const handleTutorialClose = () => { playSfx('success'); setShowTutorial(false); setTutorialStep(0); setActiveTab('dashboard'); localStorage.setItem('ap_tutorial_seen', 'true'); triggerToast("導覽完成！開始探索吧"); };
             const replayTutorial = () => { playSfx('tap'); setShowTutorial(true); setTutorialStep(0); setShowSettings(false); };
 
-            //            const totalCashTWD = useMemo(() => cash.reduce((acc, curr) => acc + (curr.balance || 0), 0), [cash]);
+            const totalCashTWD = useMemo(() => cash.reduce((acc, curr) => acc + (curr.balance || 0), 0), [cash]);
             const totalTwStocksTWD = useMemo(() => twStocks.reduce((acc, curr) => acc + ((curr.shares || 0) * (curr.price || 0)), 0), [twStocks]);
             const totalForeignStocksTWD = useMemo(() => foreignStocks.reduce((acc, s) => { const rate = rates[s.currency] || 1; return acc + ((s.price || 0) * (s.shares || 0) * rate); }, 0), [foreignStocks, rates]);
             const totalForeignCashTWD = useMemo(() => foreignCash.reduce((acc, c) => { const rate = rates[c.currency] || 1; return acc + ((c.balance || 0) * rate); }, 0), [foreignCash, rates]);
@@ -848,7 +847,7 @@
                 return groups;
             }, [monthlyReportData, history]);
 
-            //            const fetchLiveData = async () => {
+            const fetchLiveData = async () => {
                 setIsUpdating(true);
                 playSfx('tap');
                 const reportLogs = [];
@@ -960,12 +959,12 @@
                 }
             };
 
-            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v24.5_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
+            const exportData = () => { playSfx('success'); const data = { cash, twStocks, foreignStocks, foreignCash, goals, sopList, sopDetails, history, rates, walletOrder, userName }; const blob = new Blob([JSON.stringify(data)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `assetpilot_backup_v24.11_${new Date().toISOString().slice(0,10)}.json`; a.click(); };
             const importData = (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const data = JSON.parse(e.target.result); if (confirm('確定要還原備份資料嗎？')) { if(data.cash) setCash(data.cash); if(data.twStocks) setTwStocks(data.twStocks); if(data.foreignStocks) setForeignStocks(data.foreignStocks); if(data.foreignCash) setForeignCash(data.foreignCash); if(data.goals) setGoals(data.goals); if(data.sopList) setSopList(data.sopList); if(data.sopDetails) setSopDetails(data.sopDetails); if(data.history) setHistory(data.history); if(data.rates) setRates(data.rates); if(data.walletOrder) setWalletOrder(data.walletOrder); if(data.userName) setUserName(data.userName); playSfx('success'); triggerToast('資料還原成功'); setShowSettings(false); } } catch (err) { alert('檔案格式錯誤'); } }; reader.readAsText(file); };
             
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
             
-            //            const performDelete = (id, type) => { 
+            const performDelete = (id, type) => { 
                 if (!id) return; 
                 if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); 
                 else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); 
@@ -994,7 +993,7 @@
                 setIsSearching(false);
             };
 
-            //            const handleSearchTextChange = (val) => {
+            const handleSearchTextChange = (val) => {
                 setAddForm(prev => ({ ...prev, main: val }));
                 
                 if (addItemType === 'cash' || addItemType === 'cashForeign') return;
@@ -1119,7 +1118,7 @@
 
             const TabButton = ({ id, label, icon }) => ( <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}><Icon name={icon} className="w-5 h-5 mb-1" />{label}</button> );
             
-            //            const renderSection = (type, index) => {
+            const renderSection = (type, index) => {
                 const style = { viewTransitionName: `section-${type}` };
                 if (type === 'cashTW') {
                     return (
@@ -1133,7 +1132,7 @@
                     return (
                         <div key="cashForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-purple-400 flex items-center"><Icon name="coins" className="w-4 h-4 mr-2" /> 外幣現金</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignCashTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('cashForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外幣現金"><Icon name="plus" className="w-3 h-3" /></button></div></div>
-                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="flex items-center gap-2 overflow-hidden"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30 flex-shrink-0">{item.currency}</div><div className="overflow-hidden"><div className="text-sm text-slate-200 truncate">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500 truncate">{item.note}</div>}</div></div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-300">{displayMoney(item.balance * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500 truncate">{displayForeign(item.balance, item.currency)}</div></div></div>))}
+                            {foreignCash.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'cashForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="flex items-center gap-2 overflow-hidden"><div className="bg-purple-900/50 text-purple-300 text-[10px] px-1.5 py-0.5 rounded border border-purple-500/30 flex-shrink-0">{item.currency}</div><div className="overflow-hidden"><div className="text-sm text-slate-200 truncate">{item.name}</div>{item.note && <div className="text-[10px] text-slate-500 truncate">{item.note}</div>}</div></div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-300">{displayMoney((item.balance || 0) * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-500 truncate">{displayForeign(item.balance || 0, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1141,7 +1140,7 @@
                     return (
                         <div key="stockForeign" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-pink-400 flex items-center"><Icon name="globe" className="w-4 h-4 mr-2" /> 海外投資</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalForeignStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockForeign')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1" title="外國股票"><Icon name="plus" className="w-3 h-3" /></button></div></div>
-                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div><div className="flex items-center gap-2 mb-0.5 overflow-hidden"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30 flex-shrink-0">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[130px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10 truncate">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10 truncate">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-400">{displayMoney(item.price * item.shares * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono truncate">{displayForeign(item.price * item.shares, item.currency)}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayForeign(item.price, item.currency)}</div></div></div>))}
+                            {foreignStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockForeign', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div><div className="flex items-center gap-2 mb-0.5 overflow-hidden"><div className="bg-blue-900/50 text-blue-300 text-[10px] px-1.5 py-0.5 rounded border border-blue-500/30 flex-shrink-0">{item.currency}</div><div className="text-sm text-slate-200 font-bold truncate max-w-[130px]">{item.name}</div></div><div className="text-[10px] text-slate-500 font-mono pl-10 truncate">{item.ticker} • {isPrivacyMode ? '****' : (item.shares || 0)} 股</div>{item.note && <div className="text-[10px] text-slate-500 pl-10 truncate">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-purple-400">{displayMoney((item.price || 0) * (item.shares || 0) * (rates[item.currency] || 1))}</div><div className="text-[10px] text-slate-400 font-mono truncate">{displayForeign((item.price || 0) * (item.shares || 0), item.currency)}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayForeign(item.price || 0, item.currency)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1149,7 +1148,7 @@
                     return (
                         <div key="stockTW" style={style} className="glass-panel rounded-xl overflow-hidden border border-slate-700 mb-4">
                             <div className="bg-slate-800/80 p-3 border-b border-slate-700 flex justify-between items-center"><span className="text-sm font-bold text-sky-400 flex items-center"><Icon name="trending-up" className="w-4 h-4 mr-2" /> 台股現貨</span><div className="flex items-center gap-2"><span className="text-xs font-mono text-slate-300 mr-1">{displayMoney(totalTwStocksTWD)}</span><div className="flex"><button onClick={() => moveSection(index, 'up')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-up" className="w-3 h-3" /></button><button onClick={() => moveSection(index, 'down')} className="p-1 hover:text-white text-slate-500"><Icon name="arrow-down" className="w-3 h-3" /></button></div><button onClick={() => openAddItem('stockTW')} className="p-1 bg-slate-700 rounded hover:bg-slate-600 ml-1"><Icon name="plus" className="w-3 h-3" /></button></div></div>
-                            {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="overflow-hidden"><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono truncate">{item.ticker} • {isPrivacyMode ? '****' : item.shares} 股</div>{item.note && <div className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-sky-400">{displayMoney(item.price * item.shares)}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayMoney(item.price)}</div></div></div>))}
+                            {twStocks.map(item => (<div key={item.id} onClick={() => openEditItem({ type: 'stockTW', data: item })} className="p-4 border-b border-slate-800/50 flex justify-between items-center active:bg-slate-700/50 cursor-pointer overflow-hidden"><div className="overflow-hidden"><div className="text-sm text-slate-200 font-bold truncate max-w-[150px]">{item.name}</div><div className="text-[10px] text-slate-500 font-mono truncate">{item.ticker} • {isPrivacyMode ? '****' : (item.shares || 0)} 股</div>{item.note && <div className="text-[10px] text-slate-500 truncate max-w-[150px]">{item.note}</div>}</div><div className="text-right flex-shrink-0"><div className="text-sm font-mono text-sky-400">{displayMoney((item.price || 0) * (item.shares || 0))}</div><div className="text-[10px] text-slate-500 font-mono truncate">@ {displayMoney(item.price || 0)}</div></div></div>))}
                         </div>
                     );
                 }
@@ -1195,7 +1194,6 @@
                         ))}
                     </div>
 
-                    {/* */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
                             <div id="chart-area" className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
@@ -1239,7 +1237,7 @@
                         </div>
                     )}
 
-                    {/* */}
+                    {}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1285,8 +1283,8 @@
                                                     <div className="p-3 space-y-2 bg-slate-900/30 border-t border-slate-800">
                                                         {yData.months.map(({ report, index: idx }) => {
                                                             const prevMonth = monthlyReportData[idx + 1];
-                                                            const diff = prevMonth ? report.total - prevMonth.total : 0;
-                                                            const diffPercent = prevMonth && prevMonth.total !== 0 ? (diff / prevMonth.total * 100) : 0;
+                                                            const diff = prevMonth ? (report.total || 0) - (prevMonth.total || 0) : 0;
+                                                            const diffPercent = prevMonth && (prevMonth.total || 0) !== 0 ? (diff / prevMonth.total * 100) : 0;
                                                             const monthKey = report.date;
                                                             const isMonthOpen = expandedMonths[monthKey];
 
@@ -1298,7 +1296,7 @@
                                                                             <span className="text-xs text-slate-300 font-bold">{report.date.substring(0, 7)} 結算</span>
                                                                         </div>
                                                                         <div className="text-right">
-                                                                            <div className="text-xs font-mono text-white">{displayMoney(report.total)}</div>
+                                                                            <div className="text-xs font-mono text-white">{displayMoney(report.total || 0)}</div>
                                                                             <div className={`text-[10px] ${diff >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                                                 {isPrivacyMode ? '****' : `${diff >= 0 ? '+' : ''}${formatMoney(diff)} (${isPrivacyMode ? '**.*%' : (diff >= 0 ? '+' : '') + diffPercent.toFixed(1) + '%'})`}
                                                                             </div>
@@ -1415,7 +1413,7 @@
                         </div>
                     )}
                     
-                    {/* */}
+                    {}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
                     <div className="space-y-4 mb-6">
                         {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
@@ -1456,7 +1454,7 @@
                             <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
                                 <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white">{editItem.type.includes('cash') ? '更新餘額與資訊' : '更新股數與資訊'}</h3><button onClick={() => { playSfx('pop'); setEditItem(null); }} className="text-slate-400"><Icon name="x" className="w-6 h-6" /></button></div>
                                 <div className="space-y-3 mb-4"><input type="text" id="editName" defaultValue={editItem.data.name} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="名稱"/><input type="text" id="editNote" defaultValue={editItem.data.note} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-xs focus:border-blue-500 outline-none" placeholder="備註 (例: 活存)"/></div>
-                                <Calculator initialValue={editItem.type.includes('cash') ? editItem.data.balance : editItem.data.shares} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} playSfx={playSfx} />
+                                <Calculator initialValue={editItem.type.includes('cash') ? (editItem.data.balance || 0) : (editItem.data.shares || 0)} onConfirm={(val) => handleUpdateValue(editItem.data.id, editItem.type, val, document.getElementById('editName').value, document.getElementById('editNote').value)} playSfx={playSfx} />
                                 <div className="mt-4 pt-4 border-t border-slate-700 flex justify-end"><button onClick={(e) => { e.stopPropagation(); playSfx('tap'); if (deleteConfirm) { performDelete(editItem.data.id, editItem.type); } else { setDeleteConfirm(true); } }} className={`py-2 px-4 rounded-lg flex items-center text-sm font-bold transition-all ${deleteConfirm ? 'bg-red-600 text-white w-full justify-center' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}><Icon name="trash-2" className="w-4 h-4 mr-2" />{deleteConfirm ? '確定要刪除此帳戶嗎？' : '刪除帳戶'}</button></div>
                             </div>
                         </div>
