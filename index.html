@@ -383,7 +383,7 @@
 
             const displayData = useMemo(() => {
                 return filteredData.map(h => {
-                    if (mode === 'total') return h.total;
+                    if (mode === 'total') return h.total || 0;
                     if (mode === 'cashTW') return h.cashTW || 0;
                     if (mode === 'stockTW') return h.stockTW || 0;
                     if (mode === 'cashForeign') return h.cashForeign || 0;
@@ -716,7 +716,6 @@
             const [showWelcome, setShowWelcome] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '' });
             const [showTutorial, setShowTutorial] = useState(false);
-            const [tutorialStep, setTutorialStep] = useState(0);
             const [isPrivacyMode, setIsPrivacyMode] = useState(false); 
             const [activeTab, setActiveTab] = useState('dashboard');
             
@@ -891,9 +890,9 @@
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
                         
                         if (price !== null && price !== undefined) {
-                            const diff = price - (s.price || 0); // 防呆
+                            const diff = price - (s.price || 0); 
                             reportLogs.push({ 
-                                label: updatedS.name || s.ticker, // 防呆
+                                label: updatedS.name || s.ticker, 
                                 value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${(s.price || 0).toFixed(2)} -> ${price.toFixed(2)}`, 
                                 diff: diff 
                             });
@@ -916,9 +915,9 @@
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
                         
                         if (price !== null && price !== undefined) {
-                            const diff = price - (s.price || 0); // 防呆
+                            const diff = price - (s.price || 0); 
                             reportLogs.push({ 
-                                label: updatedS.name || s.ticker, // 防呆
+                                label: updatedS.name || s.ticker, 
                                 value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${(s.price || 0).toFixed(2)} -> ${price.toFixed(2)}`, 
                                 diff: diff 
                             });
@@ -1168,7 +1167,6 @@
                                 <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
-                                {/* Share button removed for V24.5 */}
                                 <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}><Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" /></button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
                                 <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
@@ -1353,6 +1351,15 @@
                     {showWelcome && <WelcomeModal onConfirm={handleWelcomeConfirm} />}
                     {showTutorial && <TutorialSpotlight stepIndex={tutorialStep} totalSteps={TUTORIAL_STEPS.length} onNext={handleTutorialNext} onPrev={handleTutorialPrev} onClose={handleTutorialClose} />}
                     
+                    {showSopModal && (
+                        <SopDetailsModal 
+                            sopDetails={sopDetails} 
+                            setSopDetails={setSopDetails} 
+                            onClose={() => { playSfx('pop'); setShowSopModal(false); }} 
+                            playSfx={playSfx} 
+                        />
+                    )}
+
                     {sopTaskInput && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => setSopTaskInput(null)}>
                             <div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom" onClick={e => e.stopPropagation()}>
