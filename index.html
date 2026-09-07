@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot V24.5</title>
+    <title>AssetPilot V24.10</title>
     
     <!-- PWA Settings -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png"}]}' />
@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AssetPilot">
-    
+
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -20,7 +20,6 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Removed html2canvas for performance and stability -->
 
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -44,9 +43,6 @@
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        /* Custom spinner for search */
-        .search-spinner { border: 2px solid rgba(255,255,255,0.1); border-left-color: #3b82f6; border-radius: 50%; width: 14px; height: 14px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -54,7 +50,7 @@
 
     <script type="text/babel">
         // --- STREAMING_CHUNK:Defining version and initial constants... ---
-        const APP_VERSION = '24.5.0';
+        const APP_VERSION = '24.10.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -102,6 +98,8 @@
             const day = String(d.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         };
+
+        const generateCorrectedHistory = () => [];
 
         // --- STREAMING_CHUNK:Initializing audio and utility engines... ---
         const SoundEngine = {
@@ -353,7 +351,6 @@
                 let chartHistory = [...history];
                 chartHistory.sort((a, b) => a.date.localeCompare(b.date));
                 
-                // 去重機制：同一天只保留最後一筆
                 const uniqueHistoryMap = new Map();
                 chartHistory.forEach(item => { uniqueHistoryMap.set(item.date, item); });
                 const uniqueHistory = Array.from(uniqueHistoryMap.values()).sort((a, b) => a.date.localeCompare(b.date));
@@ -383,7 +380,7 @@
 
             const displayData = useMemo(() => {
                 return filteredData.map(h => {
-                    if (mode === 'total') return h.total;
+                    if (mode === 'total') return h.total || 0;
                     if (mode === 'cashTW') return h.cashTW || 0;
                     if (mode === 'stockTW') return h.stockTW || 0;
                     if (mode === 'cashForeign') return h.cashForeign || 0;
@@ -478,7 +475,7 @@
                 if (len <= 7) return 100;
                 if (timeRange === '年') return Math.max(100, (len / 4) * 100); 
                 if (timeRange === '月') return Math.max(100, (len / 6) * 100);
-                return Math.max(100, (len / 7) * 100);
+                return Math.max(100, (len / 7) * 100); 
             };
 
             return (
@@ -708,7 +705,7 @@
             const [sopList, setSopList] = useState(() => JSON.parse(localStorage.getItem('ap_sop')) || INITIAL_SOP);
             const [sopDetails, setSopDetails] = useState(() => JSON.parse(localStorage.getItem('ap_sop_details')) || INITIAL_SOP_DETAILS);
             const [rates, setRates] = useState(() => { const saved = localStorage.getItem('ap_rates_map'); const savedRates = saved ? JSON.parse(saved) : {}; return { ...INITIAL_RATES, ...savedRates }; });
-            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || []);
+            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('ap_history_v3')) || generateCorrectedHistory());
             const [walletOrder, setWalletOrder] = useState(() => { const saved = localStorage.getItem('ap_wallet_order'); return saved ? JSON.parse(saved) : ['cashTW', 'cashForeign', 'stockForeign', 'stockTW']; });
             const [userName, setUserName] = useState(() => localStorage.getItem('ap_user_name') || 'User');
             const [soundEnabled, setSoundEnabled] = useState(() => { const saved = localStorage.getItem('ap_sound_enabled'); return saved !== null ? JSON.parse(saved) : true; });
@@ -834,19 +831,24 @@
 
             const groupedByYear = useMemo(() => {
                 const groups = {};
+                // 1. 保留 UI 需要的各月結算資料結構
                 monthlyReportData.forEach((rep, idx) => {
                     const year = rep.date.substring(0, 4);
                     if (!groups[year]) groups[year] = { months: [], totalDiff: 0 };
                     groups[year].months.push({ report: rep, index: idx });
                 });
+                
+                // 2. 精準計算 totalDiff，完美對齊 YTD 邏輯 (該年最後一筆 減 該年第一筆)
                 Object.keys(groups).forEach(year => {
-                    const mList = groups[year].months;
-                    const latestInYear = mList[0].report.total;
-                    const oldestInYear = mList[mList.length - 1].report.total;
-                    groups[year].totalDiff = latestInYear - oldestInYear;
+                    const yearRecords = history.filter(h => h.date.substring(0, 4) === year);
+                    if (yearRecords.length > 0) {
+                        const firstRecord = yearRecords[0];
+                        const lastRecord = yearRecords[yearRecords.length - 1];
+                        groups[year].totalDiff = lastRecord.total - firstRecord.total;
+                    }
                 });
                 return groups;
-            }, [monthlyReportData]);
+            }, [monthlyReportData, history]);
 
             // --- STREAMING_CHUNK:Updating the Live Data (with Yahoo FX)... ---
             const fetchLiveData = async () => {
@@ -1168,7 +1170,7 @@
                                 <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
-                                {/* Share button removed for V24.5 */}
+                                {/* Share button removed for V24.5 pure version */}
                                 <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}><Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" /></button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
                                 <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
