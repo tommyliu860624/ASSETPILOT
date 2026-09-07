@@ -383,7 +383,7 @@
 
             const displayData = useMemo(() => {
                 return filteredData.map(h => {
-                    if (mode === 'total') return h.total || 0;
+                    if (mode === 'total') return h.total;
                     if (mode === 'cashTW') return h.cashTW || 0;
                     if (mode === 'stockTW') return h.stockTW || 0;
                     if (mode === 'cashForeign') return h.cashForeign || 0;
@@ -716,6 +716,7 @@
             const [showWelcome, setShowWelcome] = useState(false);
             const [toast, setToast] = useState({ show: false, message: '' });
             const [showTutorial, setShowTutorial] = useState(false);
+            const [tutorialStep, setTutorialStep] = useState(0);
             const [isPrivacyMode, setIsPrivacyMode] = useState(false); 
             const [activeTab, setActiveTab] = useState('dashboard');
             
@@ -890,9 +891,9 @@
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
                         
                         if (price !== null && price !== undefined) {
-                            const diff = price - (s.price || 0); 
+                            const diff = price - (s.price || 0); // 防呆
                             reportLogs.push({ 
-                                label: updatedS.name || s.ticker, 
+                                label: updatedS.name || s.ticker, // 防呆
                                 value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${(s.price || 0).toFixed(2)} -> ${price.toFixed(2)}`, 
                                 diff: diff 
                             });
@@ -915,9 +916,9 @@
                         if (name && (s.name === s.ticker || s.name === s.ticker.split('.')[0])) updatedS.name = name;
                         
                         if (price !== null && price !== undefined) {
-                            const diff = price - (s.price || 0); 
+                            const diff = price - (s.price || 0); // 防呆
                             reportLogs.push({ 
-                                label: updatedS.name || s.ticker, 
+                                label: updatedS.name || s.ticker, // 防呆
                                 value: diff === 0 ? `無變動 (${price.toFixed(2)})` : `${(s.price || 0).toFixed(2)} -> ${price.toFixed(2)}`, 
                                 diff: diff 
                             });
@@ -1167,6 +1168,7 @@
                                 <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
+                                {/* Share button removed for V24.5 */}
                                 <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}><Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" /></button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
                                 <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
