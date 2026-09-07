@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AssetPilot V24.10</title>
+    <title>AssetPilot V24.11</title>
     
     <!-- PWA Settings -->
     <link rel="manifest" href='data:application/manifest+json,{"name":"AssetPilot","short_name":"AssetPilot","start_url":".","display":"standalone","orientation":"portrait","background_color":"#0f172a","theme_color":"#0f172a","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png"}]}' />
@@ -49,8 +49,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- STREAMING_CHUNK:Defining version and initial constants... ---
-        const APP_VERSION = '24.10.0';
+        //        const APP_VERSION = '24.11.0';
 
         const { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } = React;
 
@@ -101,8 +100,7 @@
 
         const generateCorrectedHistory = () => [];
 
-        // --- STREAMING_CHUNK:Initializing audio and utility engines... ---
-        const SoundEngine = {
+        //        const SoundEngine = {
             ctx: null,
             init: () => {
                 if (!SoundEngine.ctx) { SoundEngine.ctx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -144,8 +142,7 @@
             { targetId: "header-settings", title: "設定與備份", content: "最後，別忘了定期備份資料。您也可以在此修改暱稱或重播此教學。準備好開始了嗎？", tab: "dashboard" }
         ];
 
-        // --- STREAMING_CHUNK:Defining UI components (Icon, Toast, Modals)... ---
-        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
+        //        const Icon = React.memo(({ name, className }) => <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: `<i data-lucide="${name}" class="${className || ''}"></i>` }} />);
         
         const Toast = ({ message, show }) => (
             <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg border border-slate-700 flex items-center gap-2 transition-all duration-300 z-[400] ${show ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
@@ -641,8 +638,7 @@
             }
         };
 
-        // --- STREAMING_CHUNK:Main Data Fetching (Yahoo & Proxy)... ---
-        const fetchYahooData = async (ticker) => { 
+        //        const fetchYahooData = async (ticker) => { 
             const timestamp = new Date().getTime();
             
             const endpoints = [
@@ -676,28 +672,34 @@
             return { price: null, name: null };
         };
 
+        // Dual-Layer Smart Autocomplete Search
         const fetchYahooSearch = async (query) => {
-            const endpoints = [
-                `https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&quotesCount=6&newsCount=0`)}`,
-                `https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&quotesCount=6&newsCount=0`)}`
-            ];
-            for (const endpoint of endpoints) {
+            let results = [];
+            try {
+                // Primary: Cloudflare worker
+                const cfRes = await fetchWithTimeout(`https://assetpilot-proxy.tommyliu860624.workers.dev/?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&quotesCount=6&newsCount=0`)}`, { cache: "no-store" }, 2500);
+                if (cfRes.ok) {
+                    const data = await cfRes.json();
+                    if (data && data.quotes) results = data.quotes;
+                }
+            } catch (e) {}
+
+            if (results.length === 0) {
                 try {
-                    const res = await fetchWithTimeout(endpoint, { cache: "no-store" }, 2500);
-                    if (!res.ok) continue;
-                    let json = await res.json();
-                    let data = endpoint.includes('allorigins') ? JSON.parse(json.contents) : json;
-                    if (data && data.quotes) {
-                        return data.quotes.filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
+                    // Fallback: allorigins
+                    const aoRes = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://query2.finance.yahoo.com/v1/finance/search?q=${query}&quotesCount=6&newsCount=0`)}`, { cache: "no-store" }, 2500);
+                    if (aoRes.ok) {
+                        const json = await aoRes.json();
+                        const data = JSON.parse(json.contents);
+                        if (data && data.quotes) results = data.quotes;
                     }
                 } catch (e) {}
             }
-            return [];
+            return results.filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF');
         };
 
         const App = () => {
-            // --- STREAMING_CHUNK:App State Initialization... ---
-            const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
+            //            const [cash, setCash] = useState(() => JSON.parse(localStorage.getItem('ap_cash')) || INITIAL_CASH);
             const [twStocks, setTwStocks] = useState(() => JSON.parse(localStorage.getItem('ap_tw_stocks')) || INITIAL_TW_STOCKS);
             const [foreignStocks, setForeignStocks] = useState(() => { const saved = localStorage.getItem('ap_foreign_stocks'); if (saved) return JSON.parse(saved); const oldUs = localStorage.getItem('ap_us_stocks'); if (oldUs) { const parsed = JSON.parse(oldUs); return parsed.map(s => ({ ...s, currency: 'USD' })); } return INITIAL_FOREIGN_CASH; });
             const [foreignCash, setForeignCash] = useState(() => { const saved = localStorage.getItem('ap_foreign_cash_list'); if (saved) return JSON.parse(saved); const oldUsCash = localStorage.getItem('ap_us_cash'); if (oldUsCash && parseFloat(oldUsCash) > 0) { return [{ id: 'migrated_usd', name: 'Firstrade 餘額', balance: parseFloat(oldUsCash), currency: 'USD' }]; } return INITIAL_FOREIGN_CASH; });
@@ -749,8 +751,7 @@
             
             const currentYear = new Date().getFullYear();
 
-            // --- STREAMING_CHUNK:Effects and Storage sync... ---
-            useEffect(() => {
+            //            useEffect(() => {
                 const checkUpdate = async () => {
                     try {
                         const response = await fetch(window.location.href, { cache: "no-store" });
@@ -792,8 +793,7 @@
             const handleTutorialClose = () => { playSfx('success'); setShowTutorial(false); setTutorialStep(0); setActiveTab('dashboard'); localStorage.setItem('ap_tutorial_seen', 'true'); triggerToast("導覽完成！開始探索吧"); };
             const replayTutorial = () => { playSfx('tap'); setShowTutorial(true); setTutorialStep(0); setShowSettings(false); };
 
-            // --- STREAMING_CHUNK:Financial Calculations... ---
-            const totalCashTWD = useMemo(() => cash.reduce((acc, curr) => acc + (curr.balance || 0), 0), [cash]);
+            //            const totalCashTWD = useMemo(() => cash.reduce((acc, curr) => acc + (curr.balance || 0), 0), [cash]);
             const totalTwStocksTWD = useMemo(() => twStocks.reduce((acc, curr) => acc + ((curr.shares || 0) * (curr.price || 0)), 0), [twStocks]);
             const totalForeignStocksTWD = useMemo(() => foreignStocks.reduce((acc, s) => { const rate = rates[s.currency] || 1; return acc + ((s.price || 0) * (s.shares || 0) * rate); }, 0), [foreignStocks, rates]);
             const totalForeignCashTWD = useMemo(() => foreignCash.reduce((acc, c) => { const rate = rates[c.currency] || 1; return acc + ((c.balance || 0) * rate); }, 0), [foreignCash, rates]);
@@ -829,16 +829,14 @@
                 return Object.values(report).sort((a, b) => b.date.localeCompare(a.date));
             }, [history]);
 
+            // 精準對齊 YTD 的年度總結算法
             const groupedByYear = useMemo(() => {
                 const groups = {};
-                // 1. 保留 UI 需要的各月結算資料結構
                 monthlyReportData.forEach((rep, idx) => {
                     const year = rep.date.substring(0, 4);
                     if (!groups[year]) groups[year] = { months: [], totalDiff: 0 };
                     groups[year].months.push({ report: rep, index: idx });
                 });
-                
-                // 2. 精準計算 totalDiff，完美對齊 YTD 邏輯 (該年最後一筆 減 該年第一筆)
                 Object.keys(groups).forEach(year => {
                     const yearRecords = history.filter(h => h.date.substring(0, 4) === year);
                     if (yearRecords.length > 0) {
@@ -850,8 +848,7 @@
                 return groups;
             }, [monthlyReportData, history]);
 
-            // --- STREAMING_CHUNK:Updating the Live Data (with Yahoo FX)... ---
-            const fetchLiveData = async () => {
+            //            const fetchLiveData = async () => {
                 setIsUpdating(true);
                 playSfx('tap');
                 const reportLogs = [];
@@ -968,8 +965,7 @@
             
             const openEditItem = (itemData) => { playSfx('pop'); setDeleteConfirm(false); setEditItem(itemData); };
             
-            // --- STREAMING_CHUNK:Delete with Goal Cleanup... ---
-            const performDelete = (id, type) => { 
+            //            const performDelete = (id, type) => { 
                 if (!id) return; 
                 if(type==='cash') setCash(p=>p.filter(i=>i.id!==id)); 
                 else if(type==='stockTW') setTwStocks(p=>p.filter(i=>i.id!==id)); 
@@ -998,8 +994,7 @@
                 setIsSearching(false);
             };
 
-            // --- STREAMING_CHUNK:Smart Autocomplete Search Logic... ---
-            const handleSearchTextChange = (val) => {
+            //            const handleSearchTextChange = (val) => {
                 setAddForm(prev => ({ ...prev, main: val }));
                 
                 if (addItemType === 'cash' || addItemType === 'cashForeign') return;
@@ -1124,8 +1119,7 @@
 
             const TabButton = ({ id, label, icon }) => ( <button onClick={() => { playSfx('tap'); setActiveTab(id); }} id={`nav-${id}`} className={`flex-1 flex flex-col items-center justify-center py-3 text-xs font-medium transition-colors ${activeTab === id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'}`}><Icon name={icon} className="w-5 h-5 mb-1" />{label}</button> );
             
-            // --- STREAMING_CHUNK:Rendering Main Sections... ---
-            const renderSection = (type, index) => {
+            //            const renderSection = (type, index) => {
                 const style = { viewTransitionName: `section-${type}` };
                 if (type === 'cashTW') {
                     return (
@@ -1170,7 +1164,7 @@
                                 <span className="ml-2 text-slate-500 normal-case font-normal tracking-normal border-l border-slate-700 pl-2 text-xs">你好，{userName}</span>
                             </h1>
                             <div className="flex items-center gap-3">
-                                {/* Share button removed for V24.5 pure version */}
+                                {/* Share button removed for pure version */}
                                 <button id="header-privacy" onClick={() => { playSfx('switch'); setIsPrivacyMode(!isPrivacyMode); }} className={`text-slate-400 hover:text-white transition-colors`}><Icon name={isPrivacyMode ? "eye-off" : "eye"} className="w-4 h-4" /></button>
                                 <div className="text-[10px] text-slate-500 font-mono">{lastUpdate ? `${lastUpdate}` : 'Ready'}</div>
                                 <button id="header-settings" onClick={() => { playSfx('pop'); setShowSettings(true); }} className="text-slate-400 hover:text-white"><Icon name="settings" className="w-4 h-4" /></button>
@@ -1201,7 +1195,7 @@
                         ))}
                     </div>
 
-                    {/* --- STREAMING_CHUNK:Dashboard Tab... --- */}
+                    {/* */}
                     {activeTab === 'dashboard' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-4">
                             <div id="chart-area" className="glass-panel rounded-2xl p-4 shadow-lg shadow-blue-900/10 border-t border-white/5">
@@ -1245,7 +1239,7 @@
                         </div>
                     )}
 
-                    {/* --- STREAMING_CHUNK:Analysis Tab with Collapsible Reports... --- */}
+                    {/* */}
                     {activeTab === 'analysis' && (
                         <div className="px-4 animate-fade-in pt-4 space-y-6">
                             <div id="goal-section">
@@ -1313,22 +1307,39 @@
 
                                                                     {isMonthOpen && (
                                                                         <div className="px-3 pb-3 pt-1 border-t border-slate-800/60 bg-slate-950/40 grid grid-cols-2 gap-2 text-[11px]">
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">台幣現金</div>
-                                                                                <div className="font-mono text-emerald-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashTW || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">台股部位</div>
-                                                                                <div className="font-mono text-sky-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockTW || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">外幣現金</div>
-                                                                                <div className="font-mono text-purple-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.cashForeign || 0)}</div>
-                                                                            </div>
-                                                                            <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
-                                                                                <div className="text-slate-400 mb-0.5">海外投資</div>
-                                                                                <div className="font-mono text-pink-400 font-bold truncate">{isPrivacyMode ? '****' : formatMoney(report.stockForeign || 0)}</div>
-                                                                            </div>
+                                                                            {(() => {
+                                                                                const renderStat = (label, key, colorClass) => {
+                                                                                    const currVal = report[key] || 0;
+                                                                                    const prevVal = prevMonth ? (prevMonth[key] || 0) : null;
+                                                                                    const diff = prevVal !== null ? currVal - prevVal : 0;
+                                                                                    const pct = prevVal ? (diff / prevVal) * 100 : (currVal > 0 ? 100 : 0);
+                                                                                    const diffColor = diff > 0 ? 'text-emerald-500' : diff < 0 ? 'text-red-500' : 'text-slate-500';
+                                                                                    const iconName = diff > 0 ? 'trending-up' : diff < 0 ? 'trending-down' : 'minus';
+
+                                                                                    return (
+                                                                                        <div key={key} className="bg-slate-900/60 p-2 rounded border border-slate-800 flex flex-col justify-between overflow-hidden">
+                                                                                            <div>
+                                                                                                <div className="text-slate-400 mb-0.5">{label}</div>
+                                                                                                <div className={`font-mono ${colorClass} font-bold truncate`}>{isPrivacyMode ? '****' : formatMoney(currVal)}</div>
+                                                                                            </div>
+                                                                                            {prevMonth && (
+                                                                                                <div className={`text-[9px] font-mono mt-1 flex items-center truncate ${diffColor}`}>
+                                                                                                    <Icon name={iconName} className="w-2.5 h-2.5 mr-1 flex-shrink-0" />
+                                                                                                    <span className="truncate">{isPrivacyMode ? '****' : `${diff > 0 ? '+' : ''}${new Intl.NumberFormat('en-US').format(diff)} (${diff > 0 ? '+' : ''}${pct.toFixed(1)}%)`}</span>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    );
+                                                                                };
+                                                                                return (
+                                                                                    <>
+                                                                                        {renderStat('台幣現金', 'cashTW', 'text-emerald-400')}
+                                                                                        {renderStat('台股部位', 'stockTW', 'text-sky-400')}
+                                                                                        {renderStat('外幣現金', 'cashForeign', 'text-purple-400')}
+                                                                                        {renderStat('海外投資', 'stockForeign', 'text-pink-400')}
+                                                                                    </>
+                                                                                );
+                                                                            })()}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -1404,7 +1415,7 @@
                         </div>
                     )}
                     
-                    {/* --- STREAMING_CHUNK:Add Item Modal (With Smart Search)... --- */}
+                    {/* */}
                     {addItemType && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] sm:p-6 animate-fade-in" onClick={() => { playSfx('pop'); setAddItemType(null); }}><div className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl p-6 w-full max-w-sm shadow-2xl safe-area-bottom overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}><div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-white">新增項目</h3><button onClick={() => { playSfx('pop'); setAddItemType(null); }} className="text-slate-400 hover:text-white"><Icon name="x" className="w-6 h-6" /></button></div>
                     <div className="space-y-4 mb-6">
                         {(addItemType === 'cashForeign' || addItemType === 'stockForeign') && (
